@@ -1,0 +1,29 @@
+# Build artifacts
+target/
+Cargo.lock
+
+# Source code (not needed for npm package)
+src/
+
+# Development files
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+
+# Test files
+test.bat
+test.sh
+test-integration.ps1
+build-and-test.bat
+
+# Documentation
+PROJECT_SUMMARY.md
+
+# Config examples
+mcp-config-example.json
+
+# Rust files
+Cargo.toml
+Cargo.lock

@@ -4,34 +4,59 @@
   "description": "MCP Server for CC Switch - Provider management for Claude Code, Codex, Gemini CLI, OpenCode & OpenClaw",
   "main": "index.js",
   "bin": {
-    "cc-switch-mcp": "./bin/cc-switch-mcp"
+    "cc-switch-mcp": "./bin/cc-switch-mcp.js"
   },
   "scripts": {
     "build": "cargo build --release",
-    "test": "cargo test"
+    "test": "cargo test",
+    "prepublishOnly": "cargo build --release",
+    "postinstall": "node scripts/install.js"
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "claude",
     "claude-code",
     "codex",
     "gemini",
+    "gemini-cli",
     "opencode",
     "openclaw",
     "provider-management",
-    "ai"
+    "ai",
+    "llm",
+    "anthropic",
+    "openai"
   ],
   "author": "CC Switch Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/farion1231/cc-switch"
+    "url": "git+https://github.com/l1i1/cc-switch-mcp.git"
   },
+  "bugs": {
+    "url": "https://github.com/l1i1/cc-switch-mcp/issues"
+  },
+  "homepage": "https://github.com/l1i1/cc-switch-mcp#readme",
   "engines": {
     "node": ">=18"
   },
   "files": [
     "bin/",
-    "README.md"
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
   ]
 }
