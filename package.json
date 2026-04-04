@@ -1,14 +1,11 @@
 {
   "name": "@imvhb/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP Server for CC Switch - Provider management for Claude Code, Codex, Gemini CLI, OpenCode & OpenClaw",
   "bin": {
     "cc-switch-mcp": "bin/cc-switch-mcp.js"
   },
   "scripts": {
-    "build": "cargo build --release",
-    "test": "cargo test",
-    "prepublishOnly": "cargo build --release",
     "postinstall": "node scripts/install.js"
   },
   "keywords": [
@@ -49,13 +46,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "os": [
-    "win32",
-    "darwin",
-    "linux"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
-  ]
+  "optionalDependencies": {
+    "@imvhb/mcp-server-win32-x64": "0.1.1",
+    "@imvhb/mcp-server-darwin-x64": "0.1.1",
+    "@imvhb/mcp-server-darwin-arm64": "0.1.1",
+    "@imvhb/mcp-server-linux-x64": "0.1.1"
+  }
 }

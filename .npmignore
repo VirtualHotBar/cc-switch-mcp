@@ -2,7 +2,7 @@
 target/
 Cargo.lock
 
-# Source code (not needed for npm package)
+# Source code
 src/
 
 # Development files
@@ -11,15 +11,23 @@ src/
 .github/
 .vscode/
 .idea/
+*.log
 
 # Test files
 test.bat
 test.sh
 test-integration.ps1
 build-and-test.bat
+publish.ps1
+publish.sh
 
 # Documentation
 PROJECT_SUMMARY.md
+NPM_PUBLISH_GUIDE.md
+NPM_PUBLISH_OTP.md
+GITHUB_SETUP.md
+PUBLISHING.md
+CHANGELOG.md
 
 # Config examples
 mcp-config-example.json
@@ -27,3 +35,6 @@ mcp-config-example.json
 # Rust files
 Cargo.toml
 Cargo.lock
+
+# Platform packages (not needed in main package)
+packages/

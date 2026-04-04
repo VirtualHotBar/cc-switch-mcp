@@ -1,0 +1,215 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: win32-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: cc-switch-mcp.exe
+          
+          - name: darwin-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            binary: cc-switch-mcp
+          
+          - name: darwin-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            binary: cc-switch-mcp
+          
+          - name: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: cc-switch-mcp
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Create package directory
+        run: |
+          mkdir -p packages/${{ matrix.name }}/binary
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} packages/${{ matrix.name }}/binary/cc-switch-mcp${{ matrix.name == 'win32-x64' && '.exe' || '' }}
+
+      - name: Create package.json
+        run: |
+          cat > packages/${{ matrix.name }}/package.json << EOF
+          {
+            "name": "@imvhb/mcp-server-${{ matrix.name }}",
+            "version": "${{ steps.get_version.outputs.VERSION }}",
+            "description": "CC Switch MCP Server binary for ${{ matrix.name }}",
+            "license": "MIT",
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/VirtualHotBar/cc-switch-mcp.git"
+            },
+            "author": "CC Switch Team",
+            "os": ["${{ matrix.name == 'win32-x64' && 'win32' || startsWith(matrix.name, 'darwin') && 'darwin' || 'linux' }}"],
+            "cpu": ["${{ endsWith(matrix.name, 'arm64') && 'arm64' || 'x64' }}"],
+            "files": ["binary/", "README.md"],
+            "publishConfig": {
+              "access": "public"
+            }
+          }
+          EOF
+
+      - name: Create README
+        run: |
+          cat > packages/${{ matrix.name }}/README.md << EOF
+          # @imvhb/mcp-server-${{ matrix.name }}
+          
+          Binary package for CC Switch MCP Server (${{ matrix.name }}).
+          
+          This package is automatically installed as an optional dependency.
+          
+          ## License
+          
+          MIT
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.name }}
+          path: packages/${{ matrix.name }}
+
+  publish-platform:
+    name: Publish ${{ matrix.name }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name: [win32-x64, darwin-x64, darwin-arm64, linux-x64]
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-${{ matrix.name }}
+          path: package
+
+      - name: Publish to NPM
+        run: npm publish --access public
+        working-directory: package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-main:
+    name: Publish Main Package
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Update package version
+        run: npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version --allow-same-version
+
+      - name: Update optionalDependencies version
+        run: |
+          node -e "
+          const pkg = require('./package.json');
+          const version = '${{ steps.get_version.outputs.VERSION }}';
+          Object.keys(pkg.optionalDependencies || {}).forEach(name => {
+            pkg.optionalDependencies[name] = version;
+          });
+          require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+
+      - name: Publish to NPM
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release:
+    name: Create GitHub Release
+    needs: [build, publish-platform, publish-main]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -name "cc-switch-mcp*" -type f -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          body: |
+            # CC Switch MCP Server v${{ steps.get_version.outputs.VERSION }}
+            
+            ## Installation
+            
+            ```bash
+            npm install -g @imvhb/mcp-server
+            ```
+            
+            npm will automatically install the correct binary for your platform!
+            
+            ## Supported Platforms
+            
+            - Windows x64
+            - macOS x64 (Intel)
+            - macOS ARM64 (Apple Silicon)
+            - Linux x64
+            
+            ## What's Changed
+            
+            See [CHANGELOG.md](https://github.com/VirtualHotBar/cc-switch-mcp/blob/main/CHANGELOG.md) for details.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
