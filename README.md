@@ -1,5 +1,9 @@
 # CC Switch MCP Server
 
+[![npm version](https://badge.fury.io/js/@imvhb%2Fmcp-server.svg)](https://badge.fury.io/js/@imvhb%2Fmcp-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/badge/GitHub-VirtualHotBar%2Fcc--switch--mcp-blue)](https://github.com/VirtualHotBar/cc-switch-mcp)
+
 MCP Server implementation for [CC Switch](https://github.com/farion1231/cc-switch) - providing provider management capabilities for Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw.
 
 ## Installation
