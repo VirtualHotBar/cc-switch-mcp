@@ -32,12 +32,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/l1i1/cc-switch-mcp.git"
+    "url": "git+https://github.com/VirtualHotBar/cc-switch-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/l1i1/cc-switch-mcp/issues"
+    "url": "https://github.com/VirtualHotBar/cc-switch-mcp/issues"
   },
-  "homepage": "https://github.com/l1i1/cc-switch-mcp#readme",
+  "homepage": "https://github.com/VirtualHotBar/cc-switch-mcp#readme",
   "engines": {
     "node": ">=18"
   },

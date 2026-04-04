@@ -2,18 +2,25 @@
 
 MCP Server implementation for [CC Switch](https://github.com/farion1231/cc-switch) - providing provider management capabilities for Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw.
 
-## Features
-
-- **Provider Management**: Add, list, switch, and delete providers for each CLI tool
-- **Universal Providers**: Create cross-app shared configurations
-- **Resource Access**: Access provider configurations via MCP resources
-- **Database Integration**: Uses the same SQLite database as CC Switch desktop app
-
 ## Installation
+
+### From NPM
+
+```bash
+npm install -g @cc-switch/mcp-server
+```
+
+Or with your favorite package manager:
+
+```bash
+yarn global add @cc-switch/mcp-server
+pnpm add -g @cc-switch/mcp-server
+```
 
 ### From Source
 
 ```bash
+git clone https://github.com/l1i1/cc-switch-mcp.git
 cd cc-switch-mcp
 cargo build --release
 ```

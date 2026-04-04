@@ -10,7 +10,7 @@ const arch = os.arch();
 
 const version = require('../package.json').version;
 const binaryName = platform === 'win32' ? 'cc-switch-mcp.exe' : 'cc-switch-mcp';
-const downloadUrl = `https://github.com/l1i1/cc-switch-mcp/releases/download/v${version}/${platform}-${arch}-${binaryName}`;
+const downloadUrl = `https://github.com/VirtualHotBar/cc-switch-mcp/releases/download/v${version}/${platform}-${arch}-${binaryName}`;
 
 const nativeDir = path.join(__dirname, '..', 'native', `${platform}-${arch}`);
 const binaryPath = path.join(nativeDir, binaryName);
