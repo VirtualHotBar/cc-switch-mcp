@@ -7,20 +7,20 @@ MCP Server implementation for [CC Switch](https://github.com/farion1231/cc-switc
 ### From NPM
 
 ```bash
-npm install -g @cc-switch/mcp-server
+npm install -g @imvhb/mcp-server
 ```
 
 Or with your favorite package manager:
 
 ```bash
-yarn global add @cc-switch/mcp-server
-pnpm add -g @cc-switch/mcp-server
+yarn global add @imvhb/mcp-server
+pnpm add -g @imvhb/mcp-server
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/l1i1/cc-switch-mcp.git
+git clone https://github.com/VirtualHotBar/cc-switch-mcp.git
 cd cc-switch-mcp
 cargo build --release
 ```
