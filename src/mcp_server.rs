@@ -1,6 +1,8 @@
+use crate::config_service::ConfigService;
 use crate::database::Database;
 use crate::error::{Error, Result};
 use crate::provider::{Provider, UniversalProvider};
+use crate::provider_service::ProviderService;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
@@ -39,18 +41,20 @@ struct JsonRpcError {
 }
 
 pub struct McpServer {
-    db: Database,
+    service: ProviderService,
 }
 
 impl McpServer {
     pub fn new() -> Result<Self> {
-        let db = Database::new()?;
-        Ok(Self { db })
+        let service = ProviderService::new()?;
+        Ok(Self { service })
     }
 
     pub fn new_in_memory() -> Result<Self> {
         let db = Database::new_in_memory()?;
-        Ok(Self { db })
+        let config = ConfigService::new();
+        let service = ProviderService { db, config };
+        Ok(Self { service })
     }
 
     pub fn run(&self) -> Result<()> {
@@ -424,7 +428,7 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
 
-        let manager = self.db.get_provider_manager(app)?;
+        let manager = self.service.list_providers(app)?;
         let providers = manager.list_providers();
 
         let result = serde_json::to_string_pretty(&json!({
@@ -510,12 +514,12 @@ requires_openai_auth = true"#,
         let mut provider = Provider::new(id.clone(), name.to_string(), settings_config);
         provider.notes = notes.map(|n| n.to_string());
 
-        self.db.save_provider(app, &provider, false)?;
+        self.service.add_provider(app, &provider, true)?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": true,
             "providerId": id,
-            "message": "Provider added successfully"
+            "message": "Provider added and activated (config synced)"
         }))?)
     }
 
@@ -529,12 +533,12 @@ requires_openai_auth = true"#,
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::McpProtocol("Missing providerId parameter".into()))?;
 
-        let success = self.db.set_current_provider(app, provider_id)?;
+        let success = self.service.switch_provider(app, provider_id)?;
 
         if success {
             Ok(serde_json::to_string_pretty(&json!({
                 "success": true,
-                "message": format!("Switched to provider {} for {}", provider_id, app)
+                "message": format!("Switched to provider {} for {} (config synced)", provider_id, app)
             }))?)
         } else {
             Err(Error::ProviderNotFound(provider_id.into()))
@@ -551,7 +555,7 @@ requires_openai_auth = true"#,
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::McpProtocol("Missing providerId parameter".into()))?;
 
-        let success = self.db.delete_provider(app, provider_id)?;
+        let success = self.service.delete_provider(app, provider_id)?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": success,
@@ -565,18 +569,14 @@ requires_openai_auth = true"#,
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
 
-        let manager = self.db.get_provider_manager(app)?;
+        let provider = self.service.get_current_provider(app)?;
 
-        if manager.current.is_empty() {
+        if provider.is_none() {
             return Ok(serde_json::to_string_pretty(&json!({
                 "current": serde_json::Value::Null,
                 "message": "No provider currently active"
             }))?);
         }
-
-        let provider = manager
-            .get_provider(&manager.current)
-            .ok_or_else(|| Error::ProviderNotFound(manager.current.clone()))?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "current": provider
@@ -584,7 +584,7 @@ requires_openai_auth = true"#,
     }
 
     fn tool_list_universal_providers(&self, _args: Value) -> Result<String> {
-        let manager = self.db.get_universal_provider_manager()?;
+        let manager = self.service.get_db().get_universal_provider_manager()?;
         let providers = manager.list_providers();
 
         Ok(serde_json::to_string_pretty(&json!({
@@ -627,7 +627,7 @@ requires_openai_auth = true"#,
             api_key.to_string(),
         );
 
-        self.db.save_universal_provider(&provider)?;
+        self.service.get_db().save_universal_provider(&provider)?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": true,
@@ -643,7 +643,10 @@ requires_openai_auth = true"#,
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::McpProtocol("Missing providerId parameter".into()))?;
 
-        let success = self.db.delete_universal_provider(provider_id)?;
+        let success = self
+            .service
+            .get_db()
+            .delete_universal_provider(provider_id)?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": success,
@@ -653,12 +656,12 @@ requires_openai_auth = true"#,
 
     fn tool_get_db_path(&self, _args: Value) -> Result<String> {
         Ok(serde_json::to_string_pretty(&json!({
-            "dbPath": self.db.get_db_path().to_string_lossy()
+            "dbPath": self.service.get_db().get_db_path().to_string_lossy()
         }))?)
     }
 
     fn tool_list_mcp_servers(&self, _args: Value) -> Result<String> {
-        let servers = self.db.get_mcp_servers()?;
+        let servers = self.service.get_db().get_mcp_servers()?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "servers": servers
@@ -701,7 +704,7 @@ requires_openai_auth = true"#,
             enabled_opencode: enabled_apps.contains(&"opencode".to_string()),
         };
 
-        self.db.save_mcp_server(&server)?;
+        self.service.get_db().save_mcp_server(&server)?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": true,
@@ -716,7 +719,7 @@ requires_openai_auth = true"#,
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::McpProtocol("Missing serverId parameter".into()))?;
 
-        let success = self.db.delete_mcp_server(server_id)?;
+        let success = self.service.get_db().delete_mcp_server(server_id)?;
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": success,
@@ -782,18 +785,22 @@ requires_openai_auth = true"#,
 
         let content = if uri.starts_with("ccswitch://providers/") {
             let app = uri.replace("ccswitch://providers/", "");
-            let manager = self.db.get_provider_manager(&app)?;
+            let manager = self.service.list_providers(&app)?;
             serde_json::to_string_pretty(&json!({
                 "providers": manager.list_providers(),
                 "current": manager.current
             }))?
         } else if uri == "ccswitch://universal-providers" {
-            let manager = self.db.get_universal_provider_manager()?;
+            let manager = self.service.get_db().get_universal_provider_manager()?;
             serde_json::to_string_pretty(&json!({
                 "providers": manager.list_providers()
             }))?
         } else if uri == "ccswitch://config/path" {
-            self.db.get_db_path().to_string_lossy().to_string()
+            self.service
+                .get_db()
+                .get_db_path()
+                .to_string_lossy()
+                .to_string()
         } else {
             return Err(Error::McpProtocol(format!("Unknown resource: {}", uri)));
         };

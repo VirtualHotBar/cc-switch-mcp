@@ -1,11 +1,11 @@
 use crate::config_service::ConfigService;
 use crate::database::Database;
 use crate::error::Result;
-use crate::provider::{Provider, ProviderManager, UniversalProvider};
+use crate::provider::{Provider, ProviderManager};
 
 pub struct ProviderService {
-    db: Database,
-    config: ConfigService,
+    pub db: Database,
+    pub config: ConfigService,
 }
 
 impl ProviderService {

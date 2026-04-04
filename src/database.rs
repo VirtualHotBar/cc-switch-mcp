@@ -547,7 +547,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{Provider, UniversalProvider, UniversalProviderApps};
+    use crate::provider::{Provider, UniversalProvider};
     use serde_json::json;
 
     #[test]

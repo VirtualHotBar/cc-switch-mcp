@@ -1,6 +1,5 @@
 use anyhow::Result;
 use serde_json::json;
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
