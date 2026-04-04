@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cc-switch": {
+      "command": "C:\\Users\\vhbs\\Desktop\\t\\cc-switch-mcp\\target\\release\\cc-switch-mcp.exe",
+      "args": [],
+      "env": {}
+    }
+  }
+}

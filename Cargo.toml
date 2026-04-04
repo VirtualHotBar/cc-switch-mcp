@@ -1,0 +1,28 @@
+[package]
+name = "cc-switch-mcp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85.0"
+description = "MCP Server for CC Switch - Provider management for Claude Code, Codex, Gemini CLI, OpenCode & OpenClaw"
+authors = ["CC Switch MCP Team"]
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "sync"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+anyhow = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5.0"
+indexmap = { version = "2", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+toml_edit = "0.22"
+regex = "1.10"
+uuid = { version = "1.11", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"

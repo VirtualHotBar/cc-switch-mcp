@@ -1,0 +1,37 @@
+{
+  "name": "@cc-switch/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP Server for CC Switch - Provider management for Claude Code, Codex, Gemini CLI, OpenCode & OpenClaw",
+  "main": "index.js",
+  "bin": {
+    "cc-switch-mcp": "./bin/cc-switch-mcp"
+  },
+  "scripts": {
+    "build": "cargo build --release",
+    "test": "cargo test"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "claude-code",
+    "codex",
+    "gemini",
+    "opencode",
+    "openclaw",
+    "provider-management",
+    "ai"
+  ],
+  "author": "CC Switch Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/farion1231/cc-switch"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ]
+}
