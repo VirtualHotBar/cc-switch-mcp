@@ -2,6 +2,7 @@ use crate::error::{Error, Result};
 use crate::provider::{Provider, ProviderManager, UniversalProvider, UniversalProviderManager};
 use dirs::home_dir;
 use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -517,6 +518,156 @@ impl Database {
         })?;
         Ok(conn.execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])? > 0)
     }
+
+    pub fn get_skills(&self) -> Result<Vec<SkillConfig>> {
+        let conn = self.conn.lock().map_err(|_| {
+            Error::Database(rusqlite::Error::InvalidPath(
+                "Cannot lock connection".into(),
+            ))
+        })?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, directory, repo_owner, repo_name, repo_branch, readme_url, 
+                    enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, installed_at 
+             FROM skills ORDER BY installed_at DESC"
+        )?;
+
+        let result = stmt
+            .query_map([], |row| {
+                Ok(SkillConfig {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    directory: row.get(3)?,
+                    repo_owner: row.get(4)?,
+                    repo_name: row.get(5)?,
+                    repo_branch: row
+                        .get::<_, Option<String>>(6)?
+                        .unwrap_or_else(|| "main".to_string()),
+                    readme_url: row.get(7)?,
+                    enabled_claude: row.get::<_, Option<bool>>(8)?.unwrap_or(false),
+                    enabled_codex: row.get::<_, Option<bool>>(9)?.unwrap_or(false),
+                    enabled_gemini: row.get::<_, Option<bool>>(10)?.unwrap_or(false),
+                    enabled_opencode: row.get::<_, Option<bool>>(11)?.unwrap_or(false),
+                    installed_at: row.get::<_, Option<i64>>(12)?.unwrap_or(0),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(result)
+    }
+
+    pub fn save_skill(&self, skill: &SkillConfig) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| {
+            Error::Database(rusqlite::Error::InvalidPath(
+                "Cannot lock connection".into(),
+            ))
+        })?;
+
+        conn.execute(
+            "INSERT OR REPLACE INTO skills (
+                id, name, description, directory, repo_owner, repo_name, repo_branch, readme_url,
+                enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, installed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                skill.id,
+                skill.name,
+                skill.description,
+                skill.directory,
+                skill.repo_owner,
+                skill.repo_name,
+                skill.repo_branch,
+                skill.readme_url,
+                skill.enabled_claude,
+                skill.enabled_codex,
+                skill.enabled_gemini,
+                skill.enabled_opencode,
+                skill.installed_at,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn delete_skill(&self, id: &str) -> Result<bool> {
+        let conn = self.conn.lock().map_err(|_| {
+            Error::Database(rusqlite::Error::InvalidPath(
+                "Cannot lock connection".into(),
+            ))
+        })?;
+        Ok(conn.execute("DELETE FROM skills WHERE id = ?1", params![id])? > 0)
+    }
+
+    pub fn get_prompts(&self, app: &str) -> Result<Vec<PromptConfig>> {
+        let conn = self.conn.lock().map_err(|_| {
+            Error::Database(rusqlite::Error::InvalidPath(
+                "Cannot lock connection".into(),
+            ))
+        })?;
+
+        let app_type = Self::normalize_app_type(app);
+
+        let mut stmt = conn.prepare(
+            "SELECT id, app_type, name, content, description, enabled, created_at, updated_at 
+             FROM prompts WHERE app_type = ?1 ORDER BY updated_at DESC",
+        )?;
+
+        let result = stmt
+            .query_map(params![app_type], |row| {
+                Ok(PromptConfig {
+                    id: row.get(0)?,
+                    app_type: row.get(1)?,
+                    name: row.get(2)?,
+                    content: row.get(3)?,
+                    description: row.get(4)?,
+                    enabled: row.get::<_, Option<bool>>(5)?.unwrap_or(true),
+                    created_at: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                    updated_at: row.get::<_, Option<i64>>(7)?.unwrap_or(0),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(result)
+    }
+
+    pub fn save_prompt(&self, prompt: &PromptConfig) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| {
+            Error::Database(rusqlite::Error::InvalidPath(
+                "Cannot lock connection".into(),
+            ))
+        })?;
+
+        conn.execute(
+            "INSERT OR REPLACE INTO prompts (
+                id, app_type, name, content, description, enabled, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                prompt.id,
+                prompt.app_type,
+                prompt.name,
+                prompt.content,
+                prompt.description,
+                prompt.enabled,
+                prompt.created_at,
+                prompt.updated_at,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn delete_prompt(&self, id: &str, app: &str) -> Result<bool> {
+        let conn = self.conn.lock().map_err(|_| {
+            Error::Database(rusqlite::Error::InvalidPath(
+                "Cannot lock connection".into(),
+            ))
+        })?;
+        let app_type = Self::normalize_app_type(app);
+        Ok(conn.execute(
+            "DELETE FROM prompts WHERE id = ?1 AND app_type = ?2",
+            params![id, app_type],
+        )? > 0)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -542,7 +693,56 @@ pub struct McpServerConfig {
     pub enabled_opencode: bool,
 }
 
-use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub directory: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_name: Option<String>,
+    #[serde(default = "default_branch")]
+    pub repo_branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub readme_url: Option<String>,
+    #[serde(default)]
+    pub enabled_claude: bool,
+    #[serde(default)]
+    pub enabled_codex: bool,
+    #[serde(default)]
+    pub enabled_gemini: bool,
+    #[serde(default)]
+    pub enabled_opencode: bool,
+    #[serde(default)]
+    pub installed_at: i64,
+}
+
+fn default_branch() -> String {
+    "main".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptConfig {
+    pub id: String,
+    pub app_type: String,
+    pub name: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub updated_at: i64,
+}
+
+fn default_true() -> bool {
+    true
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,5 @@
 use crate::config_service::ConfigService;
-use crate::database::Database;
+use crate::database::{Database, PromptConfig, SkillConfig};
 use crate::error::{Error, Result};
 use crate::provider::{Provider, UniversalProvider};
 use crate::provider_service::ProviderService;
@@ -381,6 +381,131 @@ impl McpServer {
                         },
                         "required": ["serverId"]
                     }
+                },
+                {
+                    "name": "list_skills",
+                    "description": "List all installed skills",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "add_skill",
+                    "description": "Install a new skill from a repository",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Skill name"
+                            },
+                            "directory": {
+                                "type": "string",
+                                "description": "Local directory path for the skill"
+                            },
+                            "repoOwner": {
+                                "type": "string",
+                                "description": "GitHub repository owner"
+                            },
+                            "repoName": {
+                                "type": "string",
+                                "description": "GitHub repository name"
+                            },
+                            "repoBranch": {
+                                "type": "string",
+                                "description": "Repository branch (default: main)"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Skill description"
+                            },
+                            "enabledApps": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "enum": ["claude", "codex", "gemini", "opencode"]
+                                },
+                                "description": "Apps to enable this skill for"
+                            }
+                        },
+                        "required": ["name", "directory"]
+                    }
+                },
+                {
+                    "name": "delete_skill",
+                    "description": "Delete an installed skill",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "skillId": {
+                                "type": "string",
+                                "description": "Skill ID to delete"
+                            }
+                        },
+                        "required": ["skillId"]
+                    }
+                },
+                {
+                    "name": "list_prompts",
+                    "description": "List all prompts for a specific CLI tool",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "app": {
+                                "type": "string",
+                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
+                                "description": "The CLI tool to list prompts for"
+                            }
+                        },
+                        "required": ["app"]
+                    }
+                },
+                {
+                    "name": "add_prompt",
+                    "description": "Add a new prompt for a CLI tool",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "app": {
+                                "type": "string",
+                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
+                                "description": "The CLI tool to add prompt to"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Prompt name"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "Prompt content"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Prompt description"
+                            }
+                        },
+                        "required": ["app", "name", "content"]
+                    }
+                },
+                {
+                    "name": "delete_prompt",
+                    "description": "Delete a prompt",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "app": {
+                                "type": "string",
+                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
+                                "description": "The CLI tool the prompt belongs to"
+                            },
+                            "promptId": {
+                                "type": "string",
+                                "description": "Prompt ID to delete"
+                            }
+                        },
+                        "required": ["app", "promptId"]
+                    }
                 }
             ]
         }))
@@ -407,6 +532,12 @@ impl McpServer {
             "list_mcp_servers" => self.tool_list_mcp_servers(tool_args)?,
             "add_mcp_server" => self.tool_add_mcp_server(tool_args)?,
             "delete_mcp_server" => self.tool_delete_mcp_server(tool_args)?,
+            "list_skills" => self.tool_list_skills(tool_args)?,
+            "add_skill" => self.tool_add_skill(tool_args)?,
+            "delete_skill" => self.tool_delete_skill(tool_args)?,
+            "list_prompts" => self.tool_list_prompts(tool_args)?,
+            "add_prompt" => self.tool_add_prompt(tool_args)?,
+            "delete_prompt" => self.tool_delete_prompt(tool_args)?,
             _ => {
                 return Err(Error::McpProtocol(format!("Unknown tool: {}", tool_name)));
             }
@@ -724,6 +855,150 @@ requires_openai_auth = true"#,
         Ok(serde_json::to_string_pretty(&json!({
             "success": success,
             "message": if success { "MCP server deleted" } else { "Server not found" }
+        }))?)
+    }
+
+    fn tool_list_skills(&self, _args: Value) -> Result<String> {
+        let skills = self.service.get_db().get_skills()?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "skills": skills
+        }))?)
+    }
+
+    fn tool_add_skill(&self, args: Value) -> Result<String> {
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
+        let directory = args
+            .get("directory")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing directory parameter".into()))?;
+        let repo_owner = args.get("repoOwner").and_then(|v| v.as_str());
+        let repo_name = args.get("repoName").and_then(|v| v.as_str());
+        let repo_branch = args
+            .get("repoBranch")
+            .and_then(|v| v.as_str())
+            .unwrap_or("main");
+        let description = args.get("description").and_then(|v| v.as_str());
+        let enabled_apps = args
+            .get("enabledApps")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let id = format!("skill-{}", uuid::Uuid::new_v4());
+
+        let skill = SkillConfig {
+            id: id.clone(),
+            name: name.to_string(),
+            description: description.map(|s| s.to_string()),
+            directory: directory.to_string(),
+            repo_owner: repo_owner.map(|s| s.to_string()),
+            repo_name: repo_name.map(|s| s.to_string()),
+            repo_branch: repo_branch.to_string(),
+            readme_url: None,
+            enabled_claude: enabled_apps.contains(&"claude".to_string()),
+            enabled_codex: enabled_apps.contains(&"codex".to_string()),
+            enabled_gemini: enabled_apps.contains(&"gemini".to_string()),
+            enabled_opencode: enabled_apps.contains(&"opencode".to_string()),
+            installed_at: chrono::Utc::now().timestamp(),
+        };
+
+        self.service.get_db().save_skill(&skill)?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "success": true,
+            "skillId": id,
+            "message": "Skill added successfully"
+        }))?)
+    }
+
+    fn tool_delete_skill(&self, args: Value) -> Result<String> {
+        let skill_id = args
+            .get("skillId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing skillId parameter".into()))?;
+
+        let success = self.service.get_db().delete_skill(skill_id)?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "success": success,
+            "message": if success { "Skill deleted" } else { "Skill not found" }
+        }))?)
+    }
+
+    fn tool_list_prompts(&self, args: Value) -> Result<String> {
+        let app = args
+            .get("app")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
+
+        let prompts = self.service.get_db().get_prompts(app)?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "prompts": prompts
+        }))?)
+    }
+
+    fn tool_add_prompt(&self, args: Value) -> Result<String> {
+        let app = args
+            .get("app")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
+        let name = args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
+        let content = args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing content parameter".into()))?;
+        let description = args.get("description").and_then(|v| v.as_str());
+
+        let id = format!("prompt-{}", uuid::Uuid::new_v4());
+        let now = chrono::Utc::now().timestamp();
+
+        let prompt = PromptConfig {
+            id: id.clone(),
+            app_type: app.to_string(),
+            name: name.to_string(),
+            content: content.to_string(),
+            description: description.map(|s| s.to_string()),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.service.get_db().save_prompt(&prompt)?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "success": true,
+            "promptId": id,
+            "message": "Prompt added successfully"
+        }))?)
+    }
+
+    fn tool_delete_prompt(&self, args: Value) -> Result<String> {
+        let app = args
+            .get("app")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
+        let prompt_id = args
+            .get("promptId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::McpProtocol("Missing promptId parameter".into()))?;
+
+        let success = self.service.get_db().delete_prompt(prompt_id, app)?;
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "success": success,
+            "message": if success { "Prompt deleted" } else { "Prompt not found" }
         }))?)
     }
 
