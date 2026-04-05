@@ -124,21 +124,23 @@ jobs:
       matrix:
         name: [win32-x64, darwin-x64, darwin-arm64, linux-x64]
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: package-${{ matrix.name }}
           path: package
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
       - name: Publish to NPM
         run: npm publish --access public
         working-directory: package
+        env:
+          NPM_CONFIG_PROVENANCE: true
 
   publish-main:
     name: Publish Main Package
@@ -176,6 +178,8 @@ jobs:
 
       - name: Publish to NPM
         run: npm publish --access public
+        env:
+          NPM_CONFIG_PROVENANCE: true
 
   release:
     name: Create GitHub Release
