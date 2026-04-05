@@ -9,10 +9,11 @@ English | [简体中文](./README_CN.md)
 Standalone MCP Server for [CC Switch](https://github.com/farion1231/cc-switch) - providing provider management capabilities for Claude Code, Codex, Gemini CLI, OpenCode, and OpenClaw.
 
 **Key Features:**
-- Direct database access to CC Switch's SQLite database
-- Automatic config file synchronization
-- No Tauri dependencies - lightweight (~2.8MB)
-- Works alongside CC Switch desktop app
+- 🚀 Built with CC Switch's core library for identical behavior
+- 🔄 Automatic config file synchronization
+- 💾 Direct database access to CC Switch's SQLite database
+- 🪶 No Tauri dependencies - lightweight binary
+- 🤝 Works alongside CC Switch desktop app
 
 ## Installation
 
@@ -27,7 +28,7 @@ npm install -g @imvhb/cc-switch-mcp-server
 ```bash
 git clone https://github.com/VirtualHotBar/cc-switch-mcp.git
 cd cc-switch-mcp
-cargo build --release
+cargo build --release --no-default-features
 ```
 
 The binary will be at `target/release/cc-switch-mcp` (Linux/macOS) or `target/release/cc-switch-mcp.exe` (Windows).
@@ -42,7 +43,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 {
   "mcpServers": {
     "cc-switch": {
-      "command": "/path/to/cc-switch-mcp"
+      "command": "cc-switch-mcp"
     }
   }
 }
@@ -50,15 +51,29 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 ### Configure with OpenCode
 
-Add to your OpenCode configuration:
+Add to your OpenCode configuration (`~/.config/opencode/config.json`):
 
 ```json
 {
   "mcp": {
     "servers": {
       "cc-switch": {
-        "command": "/path/to/cc-switch-mcp"
+        "command": "cc-switch-mcp"
       }
+    }
+  }
+}
+```
+
+### Configure with Gemini CLI
+
+Add to your Gemini configuration (`~/.gemini/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "cc-switch": {
+      "command": "cc-switch-mcp"
     }
   }
 }
@@ -68,68 +83,150 @@ Add to your OpenCode configuration:
 
 | Tool | Description |
 |------|-------------|
-| `list_providers` | List all providers for a CLI tool |
-| `switch_provider` | Switch to a specific provider (updates database + syncs config files) |
-| `get_current_provider` | Get the currently active provider |
+| `list_providers` | List all providers for a CLI tool with their configurations |
+| `get_current_provider` | Get the currently active provider for a CLI tool |
+| `switch_provider` | Switch to a specific provider (auto-syncs config files) |
+| `add_provider` | Add a new provider with specified configuration |
+| `delete_provider` | Delete a provider by ID |
+| `sync_current_to_live` | Sync current provider settings to live config files |
+| `get_custom_endpoints` | Get list of custom endpoints for a provider |
 
 ## Example Usage
 
 ### List Providers
 
+```json
+{
+  "tool": "list_providers",
+  "arguments": {
+    "app": "claude"
+  }
+}
 ```
-Tool: list_providers
-Arguments: {
-  "app": "claude"
+
+Response:
+```json
+{
+  "app": "claude",
+  "providers": [
+    {
+      "id": "default",
+      "name": "default",
+      "isCurrent": false,
+      "settingsConfig": { ... }
+    },
+    {
+      "id": "my-provider",
+      "name": "My Provider",
+      "isCurrent": true,
+      "settingsConfig": { ... }
+    }
+  ],
+  "currentProviderId": "my-provider",
+  "total": 2
 }
 ```
 
 ### Switch Provider
 
+```json
+{
+  "tool": "switch_provider",
+  "arguments": {
+    "app": "claude",
+    "providerId": "my-provider"
+  }
+}
 ```
-Tool: switch_provider
-Arguments: {
+
+Response:
+```json
+{
+  "success": true,
   "app": "claude",
-  "providerId": "my-provider-id"
+  "providerId": "my-provider",
+  "configSynced": true,
+  "warnings": []
 }
 ```
 
-### Get Current Provider
+### Add Provider
 
-```
-Tool: get_current_provider
-Arguments: {
-  "app": "claude"
+```json
+{
+  "tool": "add_provider",
+  "arguments": {
+    "app": "claude",
+    "name": "My API",
+    "baseUrl": "https://api.example.com",
+    "apiKey": "sk-xxx",
+    "model": "claude-3-sonnet"
+  }
 }
 ```
+
+## Supported Apps
+
+| App | Config File | Description |
+|-----|-------------|-------------|
+| Claude Code | `~/.claude.json` | Anthropic's CLI tool |
+| Codex | `~/.codex/config.toml` | OpenAI's Codex CLI |
+| Gemini CLI | `~/.gemini/settings.json` | Google's Gemini CLI |
+| OpenCode | `~/.config/opencode/config.json` | OpenCode CLI |
+| OpenClaw | `~/.openclaw/config.json` | OpenClaw CLI |
+
+## Architecture
+
+This MCP server uses CC Switch's actual core library (`cc_switch_lib`) compiled without Tauri GUI support:
+
+```
+┌─────────────────────┐
+│   MCP Protocol      │
+│   (JSON-RPC 2.0)    │
+└─────────┬───────────┘
+          │
+┌─────────▼───────────┐
+│   cc-switch-mcp     │
+│   (This Server)     │
+└─────────┬───────────┘
+          │
+┌─────────▼───────────┐
+│   cc_switch_lib     │
+│   (Core Library)    │
+│  - ProviderService  │
+│  - Database         │
+│  - Config Sync      │
+└─────────────────────┘
+```
+
+This ensures identical behavior with the CC Switch desktop app.
 
 ## Database
 
 The server reads directly from the CC Switch SQLite database:
 
-- Location: `~/.cc-switch/cc-switch.db`
-- Fully compatible with the desktop app
-- Can be used alongside CC Switch desktop
-
-## Supported Apps
-
-| App | Config File |
-|-----|-------------|
-| Claude Code | `~/.claude.json` |
-| Codex | `~/.codex/config.toml` |
-| Gemini CLI | `~/.gemini/settings.json` |
-| OpenCode | `~/.config/opencode/config.json` |
-| OpenClaw | `~/.openclaw/config.json` |
+- **Location**: `~/.cc-switch/cc-switch.db`
+- **Compatible**: Fully compatible with the desktop app
+- **Safe**: Can be used alongside CC Switch desktop
 
 ## Development
 
 ```bash
 # Run in development mode with logging
-RUST_LOG=debug cargo run
+RUST_LOG=debug cargo run --no-default-features
 
 # Build release
-cargo build --release
+cargo build --release --no-default-features
+
+# Run tests
+cargo test --no-default-features
 ```
 
 ## License
 
 MIT
+
+## Credits
+
+- [CC Switch](https://github.com/farion1231/cc-switch) - The original desktop application
+- [Model Context Protocol](https://modelcontextprotocol.io/) - The protocol specification

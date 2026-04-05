@@ -10,10 +10,10 @@ const arch = os.arch();
 
 // Map to platform package names
 const platformPackages = {
-  'win32-x64': '@imvhb/mcp-server-win32-x64',
-  'darwin-x64': '@imvhb/mcp-server-darwin-x64',
-  'darwin-arm64': '@imvhb/mcp-server-darwin-arm64',
-  'linux-x64': '@imvhb/mcp-server-linux-x64'
+  'win32-x64': '@imvhb/cc-switch-mcp-server-win32-x64',
+  'darwin-x64': '@imvhb/cc-switch-mcp-server-darwin-x64',
+  'darwin-arm64': '@imvhb/cc-switch-mcp-server-darwin-arm64',
+  'linux-x64': '@imvhb/cc-switch-mcp-server-linux-x64'
 };
 
 const platformKey = `${platform}-${arch}`;
@@ -52,7 +52,7 @@ if (!binaryPath) {
   possiblePaths.forEach(p => console.error(`  - ${p}`));
   console.error('');
   console.error('Please reinstall the package:');
-  console.error('  npm install @imvhb/mcp-server');
+  console.error('  npm install @imvhb/cc-switch-mcp-server');
   process.exit(1);
 }
 

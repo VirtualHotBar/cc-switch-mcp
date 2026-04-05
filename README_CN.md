@@ -8,29 +8,19 @@
 
 [CC Switch](https://github.com/farion1231/cc-switch) 的 MCP Server 实现 - 为 Claude Code、Codex、Gemini CLI、OpenCode 和 OpenClaw 提供提供商管理能力。
 
-## 功能特性
-
-- ✅ **提供商管理** - 添加、删除、切换 API 提供商
-- ✅ **通用提供商** - 跨应用共享提供商配置
-- ✅ **MCP 服务器管理** - 管理 MCP 服务器配置
-- ✅ **技能管理** - 安装和管理技能
-- ✅ **提示词管理** - 管理自定义提示词
-- ✅ **配置同步** - 自动同步配置到应用配置文件
-- ✅ **完全兼容** - 与 CC Switch 桌面应用共享同一数据库
+**核心特性：**
+- 🚀 使用 CC Switch 核心库构建，行为完全一致
+- 🔄 自动同步配置文件
+- 💾 直接访问 CC Switch SQLite 数据库
+- 🪶 无 Tauri 依赖 - 轻量级二进制
+- 🤝 可与 CC Switch 桌面应用同时使用
 
 ## 安装
 
-### 从 NPM 安装（推荐）
+### 从 NPM 安装
 
 ```bash
 npm install -g @imvhb/cc-switch-mcp-server
-```
-
-或使用其他包管理器：
-
-```bash
-yarn global add @imvhb/cc-switch-mcp-server
-pnpm add -g @imvhb/cc-switch-mcp-server
 ```
 
 ### 从源码构建
@@ -38,7 +28,7 @@ pnpm add -g @imvhb/cc-switch-mcp-server
 ```bash
 git clone https://github.com/VirtualHotBar/cc-switch-mcp.git
 cd cc-switch-mcp
-cargo build --release
+cargo build --release --no-default-features
 ```
 
 二进制文件位于 `target/release/cc-switch-mcp`（Linux/macOS）或 `target/release/cc-switch-mcp.exe`（Windows）。
@@ -53,7 +43,7 @@ cargo build --release
 {
   "mcpServers": {
     "cc-switch": {
-      "command": "/path/to/cc-switch-mcp"
+      "command": "cc-switch-mcp"
     }
   }
 }
@@ -61,15 +51,29 @@ cargo build --release
 
 ### 配置 OpenCode
 
-在 OpenCode 配置文件中添加：
+在 OpenCode 配置文件中添加（`~/.config/opencode/config.json`）：
 
 ```json
 {
   "mcp": {
     "servers": {
       "cc-switch": {
-        "command": "/path/to/cc-switch-mcp"
+        "command": "cc-switch-mcp"
       }
+    }
+  }
+}
+```
+
+### 配置 Gemini CLI
+
+在 Gemini 配置文件中添加（`~/.gemini/settings.json`）：
+
+```json
+{
+  "mcpServers": {
+    "cc-switch": {
+      "command": "cc-switch-mcp"
     }
   }
 }
@@ -77,175 +81,152 @@ cargo build --release
 
 ## 可用工具
 
-### 提供商管理
-
 | 工具 | 说明 |
 |------|------|
-| `list_providers` | 列出指定应用的所有提供商 |
-| `add_provider` | 添加新的提供商配置 |
-| `switch_provider` | 切换到指定提供商 |
-| `delete_provider` | 删除提供商 |
+| `list_providers` | 列出指定应用的所有提供商及其配置 |
 | `get_current_provider` | 获取当前激活的提供商 |
-
-### 通用提供商
-
-| 工具 | 说明 |
-|------|------|
-| `list_universal_providers` | 列出所有通用提供商 |
-| `add_universal_provider` | 添加跨应用共享的提供商 |
-| `delete_universal_provider` | 删除通用提供商 |
-
-### MCP 服务器管理
-
-| 工具 | 说明 |
-|------|------|
-| `list_mcp_servers` | 列出所有 MCP 服务器配置 |
-| `add_mcp_server` | 添加新的 MCP 服务器 |
-| `delete_mcp_server` | 删除 MCP 服务器 |
-
-### 技能管理
-
-| 工具 | 说明 |
-|------|------|
-| `list_skills` | 列出所有已安装的技能 |
-| `add_skill` | 安装新技能 |
-| `delete_skill` | 删除已安装的技能 |
-
-### 提示词管理
-
-| 工具 | 说明 |
-|------|------|
-| `list_prompts` | 列出指定应用的所有提示词 |
-| `add_prompt` | 添加新的提示词 |
-| `delete_prompt` | 删除提示词 |
-
-### 工具函数
-
-| 工具 | 说明 |
-|------|------|
-| `get_db_path` | 获取 CC Switch 数据库路径 |
+| `switch_provider` | 切换到指定提供商（自动同步配置文件） |
+| `add_provider` | 添加新的提供商配置 |
+| `delete_provider` | 删除提供商 |
+| `sync_current_to_live` | 同步当前提供商设置到配置文件 |
+| `get_custom_endpoints` | 获取提供商的自定义端点列表 |
 
 ## 使用示例
 
-### 添加提供商
+### 列出提供商
 
+```json
+{
+  "tool": "list_providers",
+  "arguments": {
+    "app": "claude"
+  }
+}
 ```
-工具: add_provider
-参数: {
+
+响应：
+```json
+{
   "app": "claude",
-  "name": "我的 API 提供商",
-  "apiKey": "sk-xxx",
-  "baseUrl": "https://api.example.com",
-  "model": "claude-sonnet-4-20250514"
+  "providers": [
+    {
+      "id": "default",
+      "name": "default",
+      "isCurrent": false,
+      "settingsConfig": { ... }
+    },
+    {
+      "id": "my-provider",
+      "name": "我的提供商",
+      "isCurrent": true,
+      "settingsConfig": { ... }
+    }
+  ],
+  "currentProviderId": "my-provider",
+  "total": 2
 }
 ```
 
 ### 切换提供商
 
+```json
+{
+  "tool": "switch_provider",
+  "arguments": {
+    "app": "claude",
+    "providerId": "my-provider"
+  }
+}
 ```
-工具: switch_provider
-参数: {
+
+响应：
+```json
+{
+  "success": true,
   "app": "claude",
-  "providerId": "claude-123e4567-e89b-12d3-a456-426614174000"
+  "providerId": "my-provider",
+  "configSynced": true,
+  "warnings": []
 }
 ```
 
-### 列出提供商
+### 添加提供商
 
-```
-工具: list_providers
-参数: {
-  "app": "claude"
+```json
+{
+  "tool": "add_provider",
+  "arguments": {
+    "app": "claude",
+    "name": "我的 API",
+    "baseUrl": "https://api.example.com",
+    "apiKey": "sk-xxx",
+    "model": "claude-3-sonnet"
+  }
 }
 ```
-
-### 添加 MCP 服务器
-
-```
-工具: add_mcp_server
-参数: {
-  "name": "我的 MCP 服务器",
-  "serverConfig": "{\"command\": \"npx\", \"args\": [\"-y\", \"my-mcp-server\"], \"type\": \"stdio\"}",
-  "description": "我的自定义 MCP 服务器",
-  "enabledApps": ["claude", "opencode"]
-}
-```
-
-### 安装技能
-
-```
-工具: add_skill
-参数: {
-  "name": "代码审查技能",
-  "directory": "~/.claude/skills/code-review",
-  "repoOwner": "example",
-  "repoName": "code-review-skill",
-  "description": "自动代码审查技能",
-  "enabledApps": ["claude", "opencode"]
-}
-```
-
-## 资源
-
-MCP 服务器提供以下资源：
-
-- `ccswitch://providers/claude` - Claude Code 提供商
-- `ccswitch://providers/codex` - Codex 提供商
-- `ccswitch://providers/gemini` - Gemini CLI 提供商
-- `ccswitch://providers/opencode` - OpenCode 提供商
-- `ccswitch://providers/openclaw` - OpenClaw 提供商
-- `ccswitch://universal-providers` - 通用提供商
-- `ccswitch://config/path` - 配置路径
-
-## 数据库
-
-服务器使用与 CC Switch 桌面应用相同的 SQLite 数据库：
-
-- 位置：`~/.cc-switch/cc-switch.db`
-- 完全兼容桌面应用
-- 可与 CC Switch 桌面版同时使用
 
 ## 支持的应用
 
-| 应用 | 配置格式 |
-|------|----------|
-| Claude Code | JSON (settings.json) |
-| Codex | TOML (config.toml) |
-| Gemini CLI | JSON (.gemini/settings.json) |
-| OpenCode | JSON (opencode.json) |
-| OpenClaw | JSON (openclaw.json) |
+| 应用 | 配置文件 | 说明 |
+|------|----------|------|
+| Claude Code | `~/.claude.json` | Anthropic 的 CLI 工具 |
+| Codex | `~/.codex/config.toml` | OpenAI 的 Codex CLI |
+| Gemini CLI | `~/.gemini/settings.json` | Google 的 Gemini CLI |
+| OpenCode | `~/.config/opencode/config.json` | OpenCode CLI |
+| OpenClaw | `~/.openclaw/config.json` | OpenClaw CLI |
+
+## 架构
+
+本 MCP 服务器使用 CC Switch 的实际核心库（`cc_switch_lib`），在无 Tauri GUI 支持下编译：
+
+```
+┌─────────────────────┐
+│   MCP 协议          │
+│   (JSON-RPC 2.0)    │
+└─────────┬───────────┘
+          │
+┌─────────▼───────────┐
+│   cc-switch-mcp     │
+│   (本服务器)        │
+└─────────┬───────────┘
+          │
+┌─────────▼───────────┐
+│   cc_switch_lib     │
+│   (核心库)          │
+│  - ProviderService  │
+│  - Database         │
+│  - Config Sync      │
+└─────────────────────┘
+```
+
+这确保了与 CC Switch 桌面应用行为完全一致。
+
+## 数据库
+
+服务器直接读取 CC Switch SQLite 数据库：
+
+- **位置**：`~/.cc-switch/cc-switch.db`
+- **兼容**：与桌面应用完全兼容
+- **安全**：可与 CC Switch 桌面版同时使用
 
 ## 开发
 
 ```bash
 # 开发模式运行（带日志）
-RUST_LOG=debug cargo run
-
-# 运行测试
-cargo test
+RUST_LOG=debug cargo run --no-default-features
 
 # 构建发布版本
-cargo build --release
+cargo build --release --no-default-features
+
+# 运行测试
+cargo test --no-default-features
 ```
-
-## 工作原理
-
-当您通过 MCP 工具切换提供商时，服务器会：
-
-1. 更新 CC Switch 数据库
-2. 自动同步配置到对应应用的配置文件
-3. 确保行为与 CC Switch 桌面应用完全一致
-
-例如，切换 Claude 提供商时会同时更新：
-- `~/.cc-switch/cc-switch.db`（数据库）
-- `~/.claude/settings.json`（Claude 配置文件）
 
 ## 许可证
 
 MIT
 
-## 相关链接
+## 致谢
 
-- **GitHub**: https://github.com/VirtualHotBar/cc-switch-mcp
-- **NPM**: https://www.npmjs.com/package/@imvhb/cc-switch-mcp-server
-- **CC Switch**: https://github.com/farion1231/cc-switch
+- [CC Switch](https://github.com/farion1231/cc-switch) - 原始桌面应用
+- [Model Context Protocol](https://modelcontextprotocol.io/) - 协议规范
