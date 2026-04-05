@@ -139,8 +139,9 @@ jobs:
       - name: Upgrade npm to latest
         run: |
           npm --version
-          npm install -g npm@latest
+          npm install -g npm@10.9.2
           npm --version
+        shell: bash
 
       - name: Publish to NPM
         run: npm publish --access public --provenance
@@ -183,8 +184,9 @@ jobs:
       - name: Upgrade npm to latest
         run: |
           npm --version
-          npm install -g npm@latest
+          npm install -g npm@10.9.2
           npm --version
+        shell: bash
 
       - name: Publish to NPM
         run: npm publish --access public --provenance
