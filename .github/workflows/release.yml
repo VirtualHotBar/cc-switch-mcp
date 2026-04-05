@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: write
+
 jobs:
   build:
     name: Build ${{ matrix.name }}
@@ -106,6 +110,8 @@ jobs:
     name: Publish ${{ matrix.name }}
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     strategy:
       matrix:
         name: [win32-x64, darwin-x64, darwin-arm64, linux-x64]
@@ -123,15 +129,15 @@ jobs:
           path: package
 
       - name: Publish to NPM
-        run: npm publish --access public
+        run: npm publish --provenance --access public
         working-directory: package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-main:
     name: Publish Main Package
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -161,9 +167,7 @@ jobs:
           "
 
       - name: Publish to NPM
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
 
   release:
     name: Create GitHub Release
