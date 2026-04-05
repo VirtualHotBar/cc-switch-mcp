@@ -71,6 +71,7 @@ jobs:
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} packages/${{ matrix.name }}/binary/cc-switch-mcp${{ matrix.name == 'win32-x64' && '.exe' || '' }}
 
       - name: Create package.json
+        shell: bash
         run: |
           cat > packages/${{ matrix.name }}/package.json << EOF
           {
@@ -93,6 +94,7 @@ jobs:
           EOF
 
       - name: Create README
+        shell: bash
         run: |
           cat > packages/${{ matrix.name }}/README.md << EOF
           # @imvhb/cc-switch-mcp-server-${{ matrix.name }}
