@@ -91,6 +91,22 @@ Add to your OpenCode configuration:
 | `add_mcp_server` | Add a new MCP server |
 | `delete_mcp_server` | Delete an MCP server |
 
+### Skills Management
+
+| Tool | Description |
+|------|-------------|
+| `list_skills` | List all installed skills |
+| `add_skill` | Install a new skill |
+| `delete_skill` | Delete an installed skill |
+
+### Prompts Management
+
+| Tool | Description |
+|------|-------------|
+| `list_prompts` | List all prompts for a CLI tool |
+| `add_prompt` | Add a new prompt |
+| `delete_prompt` | Delete a prompt |
+
 ### Utility
 
 | Tool | Description |
