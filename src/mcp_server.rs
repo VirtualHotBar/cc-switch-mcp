@@ -1,15 +1,12 @@
-use crate::config_service::ConfigService;
-use crate::database::{Database, PromptConfig, SkillConfig};
-use crate::error::{Error, Result};
-use crate::provider::{Provider, UniversalProvider};
-use crate::provider_service::ProviderService;
+use cc_switch_lib::{AppState, AppType, Database, ProviderService};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::sync::Arc;
 
 const MCP_VERSION: &str = "2024-11-05";
 const SERVER_INFO: &str = "cc-switch-mcp";
-const SERVER_VERSION: &str = "0.1.0";
+const SERVER_VERSION: &str = "0.2.0";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JsonRpcRequest {
@@ -41,24 +38,51 @@ struct JsonRpcError {
 }
 
 pub struct McpServer {
-    service: ProviderService,
+    state: Arc<AppState>,
 }
 
 impl McpServer {
-    pub fn new() -> Result<Self> {
-        let service = ProviderService::new()?;
-        Ok(Self { service })
+    pub fn new() -> crate::Result<Self> {
+        let db = Database::init()
+            .map_err(|e| crate::Error::Database(e.to_string()))?;
+        let state = Arc::new(AppState::new(Arc::new(db)));
+        Ok(Self { state })
     }
 
-    pub fn new_in_memory() -> Result<Self> {
-        let db = Database::new_in_memory()?;
-        let config = ConfigService::new();
-        let service = ProviderService { db, config };
-        Ok(Self { service })
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JsonRpcResponse {
+    jsonrpc: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JsonRpcError {
+    code: i32,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<Value>,
+}
+
+pub struct McpServer {
+    state: Arc<AppState>,
+}
+
+impl McpServer {
+    pub fn new() -> crate::Result<Self> {
+        let db = Database::init()
+            .map_err(|e: cc_switch_lib::error::AppError| crate::Error::Database(e.to_string()))?;
+        let state = Arc::new(AppState::new(Arc::new(db)));
+        Ok(Self { state })
     }
 
-    pub fn run(&self) -> Result<()> {
-        tracing::info!("MCP Server running, waiting for requests...");
+    pub fn run(&self) -> crate::Result<()> {
+        tracing::info!("🚀 MCP Server running with CC Switch core library");
+        tracing::info!("📍 Using CC Switch's ProviderService for all operations");
 
         let stdin = io::stdin();
         let stdout = io::stdout();
@@ -70,7 +94,7 @@ impl McpServer {
                 continue;
             }
 
-            tracing::debug!("Received: {}", line);
+            tracing::debug!("📥 Received: {}", line);
 
             let request: JsonRpcRequest = match serde_json::from_str(&line) {
                 Ok(r) => r,
@@ -86,7 +110,7 @@ impl McpServer {
                         }),
                     };
                     let response_str = serde_json::to_string(&error_response)?;
-                    tracing::debug!("Sending: {}", response_str);
+                    tracing::debug!("📤 Sending: {}", response_str);
                     stdout.write_all(response_str.as_bytes())?;
                     stdout.write_all(b"\n")?;
                     stdout.flush()?;
@@ -97,7 +121,7 @@ impl McpServer {
             let response = self.handle_request(request)?;
 
             let response_str = serde_json::to_string(&response)?;
-            tracing::debug!("Sending: {}", response_str);
+            tracing::debug!("📤 Sending: {}", response_str);
             stdout.write_all(response_str.as_bytes())?;
             stdout.write_all(b"\n")?;
             stdout.flush()?;
@@ -106,15 +130,13 @@ impl McpServer {
         Ok(())
     }
 
-    fn handle_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
+    fn handle_request(&self, request: JsonRpcRequest) -> crate::Result<JsonRpcResponse> {
         let result = match request.method.as_str() {
             "initialize" => self.handle_initialize(request.params)?,
             "initialized" => Value::Null,
             "tools/list" => self.handle_tools_list()?,
             "tools/call" => self.handle_tools_call(request.params)?,
             "resources/list" => self.handle_resources_list()?,
-            "resources/read" => self.handle_resources_read(request.params)?,
-            "prompts/list" => self.handle_prompts_list()?,
             "ping" => json!({}),
             _ => {
                 return Ok(JsonRpcResponse {
@@ -138,16 +160,15 @@ impl McpServer {
         })
     }
 
-    fn handle_initialize(&self, params: Option<Value>) -> Result<Value> {
+    fn handle_initialize(&self, params: Option<Value>) -> crate::Result<Value> {
         let client_info = params.and_then(|p| p.get("clientInfo").cloned());
-        tracing::info!("Client connected: {:?}", client_info);
+        tracing::info!("✅ Client connected: {:?}", client_info);
 
         Ok(json!({
             "protocolVersion": MCP_VERSION,
             "capabilities": {
                 "tools": {},
-                "resources": {},
-                "prompts": {}
+                "resources": {}
             },
             "serverInfo": {
                 "name": SERVER_INFO,
@@ -156,69 +177,33 @@ impl McpServer {
         }))
     }
 
-    fn handle_tools_list(&self) -> Result<Value> {
+    fn handle_tools_list(&self) -> crate::Result<Value> {
         Ok(json!({
             "tools": [
                 {
                     "name": "list_providers",
-                    "description": "List all providers for a specific CLI tool (claude, codex, gemini, opencode, openclaw)",
+                    "description": "List all providers for a CLI tool (uses CC Switch core)",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "app": {
                                 "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool to list providers for"
+                                "enum": ["claude", "codex", "gemini", "opencode"],
+                                "description": "The CLI tool"
                             }
                         },
                         "required": ["app"]
                     }
                 },
                 {
-                    "name": "add_provider",
-                    "description": "Add a new provider configuration for a CLI tool",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "app": {
-                                "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool to add provider to"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "Provider name"
-                            },
-                            "apiKey": {
-                                "type": "string",
-                                "description": "API key for the provider"
-                            },
-                            "baseUrl": {
-                                "type": "string",
-                                "description": "API base URL"
-                            },
-                            "model": {
-                                "type": "string",
-                                "description": "Default model name"
-                            },
-                            "notes": {
-                                "type": "string",
-                                "description": "Optional notes"
-                            }
-                        },
-                        "required": ["app", "name", "apiKey", "baseUrl"]
-                    }
-                },
-                {
                     "name": "switch_provider",
-                    "description": "Switch to a specific provider for a CLI tool",
+                    "description": "Switch to a specific provider (uses CC Switch core - auto syncs config)",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "app": {
                                 "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool to switch provider for"
+                                "enum": ["claude", "codex", "gemini", "opencode"]
                             },
                             "providerId": {
                                 "type": "string",
@@ -229,317 +214,40 @@ impl McpServer {
                     }
                 },
                 {
-                    "name": "delete_provider",
-                    "description": "Delete a provider configuration",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "app": {
-                                "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool the provider belongs to"
-                            },
-                            "providerId": {
-                                "type": "string",
-                                "description": "Provider ID to delete"
-                            }
-                        },
-                        "required": ["app", "providerId"]
-                    }
-                },
-                {
                     "name": "get_current_provider",
-                    "description": "Get the currently active provider for a CLI tool",
+                    "description": "Get currently active provider (uses CC Switch core)",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "app": {
                                 "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool to check current provider for"
+                                "enum": ["claude", "codex", "gemini", "opencode"]
                             }
                         },
                         "required": ["app"]
-                    }
-                },
-                {
-                    "name": "list_universal_providers",
-                    "description": "List all universal providers (cross-app shared configuration)",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                },
-                {
-                    "name": "add_universal_provider",
-                    "description": "Add a universal provider that can be used across multiple CLI tools",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "Provider name"
-                            },
-                            "providerType": {
-                                "type": "string",
-                                "enum": ["newapi", "custom", "openai", "anthropic", "gemini"],
-                                "description": "Provider type"
-                            },
-                            "apiKey": {
-                                "type": "string",
-                                "description": "API key"
-                            },
-                            "baseUrl": {
-                                "type": "string",
-                                "description": "API base URL"
-                            },
-                            "apps": {
-                                "type": "object",
-                                "properties": {
-                                    "claude": { "type": "boolean" },
-                                    "codex": { "type": "boolean" },
-                                    "gemini": { "type": "boolean" },
-                                    "opencode": { "type": "boolean" },
-                                    "openclaw": { "type": "boolean" }
-                                },
-                                "description": "Which apps to enable"
-                            }
-                        },
-                        "required": ["name", "providerType", "apiKey", "baseUrl", "apps"]
-                    }
-                },
-                {
-                    "name": "delete_universal_provider",
-                    "description": "Delete a universal provider",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "providerId": {
-                                "type": "string",
-                                "description": "Provider ID to delete"
-                            }
-                        },
-                        "required": ["providerId"]
-                    }
-                },
-                {
-                    "name": "get_db_path",
-                    "description": "Get the path to the CC Switch database file",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                },
-                {
-                    "name": "list_mcp_servers",
-                    "description": "List all MCP server configurations",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                },
-                {
-                    "name": "add_mcp_server",
-                    "description": "Add a new MCP server configuration",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "Server name"
-                            },
-                            "serverConfig": {
-                                "type": "string",
-                                "description": "JSON string of server configuration"
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "Server description"
-                            },
-                            "enabledApps": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string",
-                                    "enum": ["claude", "codex", "gemini", "opencode"]
-                                },
-                                "description": "Apps to enable this server for"
-                            }
-                        },
-                        "required": ["name", "serverConfig"]
-                    }
-                },
-                {
-                    "name": "delete_mcp_server",
-                    "description": "Delete an MCP server configuration",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "serverId": {
-                                "type": "string",
-                                "description": "Server ID to delete"
-                            }
-                        },
-                        "required": ["serverId"]
-                    }
-                },
-                {
-                    "name": "list_skills",
-                    "description": "List all installed skills",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                },
-                {
-                    "name": "add_skill",
-                    "description": "Install a new skill from a repository",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "Skill name"
-                            },
-                            "directory": {
-                                "type": "string",
-                                "description": "Local directory path for the skill"
-                            },
-                            "repoOwner": {
-                                "type": "string",
-                                "description": "GitHub repository owner"
-                            },
-                            "repoName": {
-                                "type": "string",
-                                "description": "GitHub repository name"
-                            },
-                            "repoBranch": {
-                                "type": "string",
-                                "description": "Repository branch (default: main)"
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "Skill description"
-                            },
-                            "enabledApps": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string",
-                                    "enum": ["claude", "codex", "gemini", "opencode"]
-                                },
-                                "description": "Apps to enable this skill for"
-                            }
-                        },
-                        "required": ["name", "directory"]
-                    }
-                },
-                {
-                    "name": "delete_skill",
-                    "description": "Delete an installed skill",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "skillId": {
-                                "type": "string",
-                                "description": "Skill ID to delete"
-                            }
-                        },
-                        "required": ["skillId"]
-                    }
-                },
-                {
-                    "name": "list_prompts",
-                    "description": "List all prompts for a specific CLI tool",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "app": {
-                                "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool to list prompts for"
-                            }
-                        },
-                        "required": ["app"]
-                    }
-                },
-                {
-                    "name": "add_prompt",
-                    "description": "Add a new prompt for a CLI tool",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "app": {
-                                "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool to add prompt to"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "Prompt name"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "Prompt content"
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "Prompt description"
-                            }
-                        },
-                        "required": ["app", "name", "content"]
-                    }
-                },
-                {
-                    "name": "delete_prompt",
-                    "description": "Delete a prompt",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "app": {
-                                "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
-                                "description": "The CLI tool the prompt belongs to"
-                            },
-                            "promptId": {
-                                "type": "string",
-                                "description": "Prompt ID to delete"
-                            }
-                        },
-                        "required": ["app", "promptId"]
                     }
                 }
             ]
         }))
     }
 
-    fn handle_tools_call(&self, params: Option<Value>) -> Result<Value> {
-        let params = params.ok_or_else(|| Error::McpProtocol("Missing params".into()))?;
+    fn handle_tools_call(&self, params: Option<Value>) -> crate::Result<Value> {
+        let params = params.ok_or_else(|| crate::Error::McpProtocol("Missing params".into()))?;
         let tool_name = params
             .get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing tool name".into()))?;
+            .ok_or_else(|| crate::Error::McpProtocol("Missing tool name".into()))?;
         let tool_args = params.get("arguments").cloned().unwrap_or(json!({}));
 
         let result = match tool_name {
             "list_providers" => self.tool_list_providers(tool_args)?,
-            "add_provider" => self.tool_add_provider(tool_args)?,
             "switch_provider" => self.tool_switch_provider(tool_args)?,
-            "delete_provider" => self.tool_delete_provider(tool_args)?,
             "get_current_provider" => self.tool_get_current_provider(tool_args)?,
-            "list_universal_providers" => self.tool_list_universal_providers(tool_args)?,
-            "add_universal_provider" => self.tool_add_universal_provider(tool_args)?,
-            "delete_universal_provider" => self.tool_delete_universal_provider(tool_args)?,
-            "get_db_path" => self.tool_get_db_path(tool_args)?,
-            "list_mcp_servers" => self.tool_list_mcp_servers(tool_args)?,
-            "add_mcp_server" => self.tool_add_mcp_server(tool_args)?,
-            "delete_mcp_server" => self.tool_delete_mcp_server(tool_args)?,
-            "list_skills" => self.tool_list_skills(tool_args)?,
-            "add_skill" => self.tool_add_skill(tool_args)?,
-            "delete_skill" => self.tool_delete_skill(tool_args)?,
-            "list_prompts" => self.tool_list_prompts(tool_args)?,
-            "add_prompt" => self.tool_add_prompt(tool_args)?,
-            "delete_prompt" => self.tool_delete_prompt(tool_args)?,
             _ => {
-                return Err(Error::McpProtocol(format!("Unknown tool: {}", tool_name)));
+                return Err(crate::Error::McpProtocol(format!(
+                    "Unknown tool: {}",
+                    tool_name
+                )));
             }
         };
 
@@ -553,547 +261,116 @@ impl McpServer {
         }))
     }
 
-    fn tool_list_providers(&self, args: Value) -> Result<String> {
-        let app = args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-
-        let manager = self.service.list_providers(app)?;
-        let providers = manager.list_providers();
-
-        let result = serde_json::to_string_pretty(&json!({
-            "providers": providers,
-            "current": manager.current
-        }))?;
-
-        Ok(result)
-    }
-
-    fn tool_add_provider(&self, args: Value) -> Result<String> {
-        let app = args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
-        let api_key = args
-            .get("apiKey")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing apiKey parameter".into()))?;
-        let base_url = args
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing baseUrl parameter".into()))?;
-        let model = args
-            .get("model")
-            .and_then(|v| v.as_str())
-            .unwrap_or("default");
-        let notes = args.get("notes").and_then(|v| v.as_str());
-
-        let id = format!("{}-{}", app, uuid::Uuid::new_v4());
-
-        let settings_config = match app {
-            "claude" => json!({
-                "env": {
-                    "ANTHROPIC_BASE_URL": base_url,
-                    "ANTHROPIC_AUTH_TOKEN": api_key,
-                    "ANTHROPIC_MODEL": model
-                }
-            }),
-            "codex" => {
-                let codex_base_url = if base_url.ends_with("/v1") {
-                    base_url.to_string()
-                } else {
-                    format!("{}/v1", base_url.trim_end_matches('/'))
-                };
-                let config_toml = format!(
-                    r#"model_provider = "newapi"
-model = "{}"
-
-[model_providers.newapi]
-name = "NewAPI"
-base_url = "{}"
-wire_api = "responses"
-requires_openai_auth = true"#,
-                    model, codex_base_url
-                );
-                json!({
-                    "auth": { "OPENAI_API_KEY": api_key },
-                    "config": config_toml
-                })
-            }
-            "gemini" => json!({
-                "env": {
-                    "GOOGLE_GEMINI_BASE_URL": base_url,
-                    "GEMINI_API_KEY": api_key,
-                    "GEMINI_MODEL": model
-                }
-            }),
-            "opencode" | "openclaw" => json!({
-                "npm": "@ai-sdk/openai-compatible",
-                "options": {
-                    "baseURL": base_url,
-                    "apiKey": api_key
-                }
-            }),
-            _ => return Err(Error::UnknownAppType(app.into())),
-        };
-
-        let mut provider = Provider::new(id.clone(), name.to_string(), settings_config);
-        provider.notes = notes.map(|n| n.to_string());
-
-        self.service.add_provider(app, &provider, true)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": true,
-            "providerId": id,
-            "message": "Provider added and activated (config synced)"
-        }))?)
-    }
-
-    fn tool_switch_provider(&self, args: Value) -> Result<String> {
-        let app = args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-        let provider_id = args
-            .get("providerId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing providerId parameter".into()))?;
-
-        let success = self.service.switch_provider(app, provider_id)?;
-
-        if success {
-            Ok(serde_json::to_string_pretty(&json!({
-                "success": true,
-                "message": format!("Switched to provider {} for {} (config synced)", provider_id, app)
-            }))?)
-        } else {
-            Err(Error::ProviderNotFound(provider_id.into()))
+    fn parse_app_type(&self, app: &str) -> crate::Result<AppType> {
+        match app {
+            "claude" => Ok(AppType::Claude),
+            "codex" => Ok(AppType::Codex),
+            "gemini" => Ok(AppType::Gemini),
+            "opencode" => Ok(AppType::OpenCode),
+            _ => Err(crate::Error::InvalidApp(app.to_string())),
         }
     }
 
-    fn tool_delete_provider(&self, args: Value) -> Result<String> {
+    fn tool_list_providers(&self, args: Value) -> crate::Result<String> {
         let app = args
             .get("app")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-        let provider_id = args
-            .get("providerId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing providerId parameter".into()))?;
+            .ok_or_else(|| crate::Error::McpProtocol("Missing app parameter".into()))?;
 
-        let success = self.service.delete_provider(app, provider_id)?;
+        let app_type = self.parse_app_type(app)?;
+
+        // Use CC Switch's ProviderService
+        let providers = ProviderService::list(&self.state, app_type.clone())
+            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
+
+        let current = ProviderService::current(&self.state, app_type)
+            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
 
         Ok(serde_json::to_string_pretty(&json!({
-            "success": success,
-            "message": if success { "Provider deleted" } else { "Provider not found" }
+            "providers": providers,
+            "current": current,
+            "source": "cc-switch-core-library-v3.12.3",
+            "note": "Using CC Switch's ProviderService for identical behavior"
         }))?)
     }
 
-    fn tool_get_current_provider(&self, args: Value) -> Result<String> {
+    fn tool_switch_provider(&self, args: Value) -> crate::Result<String> {
         let app = args
             .get("app")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
+            .ok_or_else(|| crate::Error::McpProtocol("Missing app parameter".into()))?;
+        let provider_id = args
+            .get("providerId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| crate::Error::McpProtocol("Missing providerId parameter".into()))?;
 
-        let provider = self.service.get_current_provider(app)?;
+        let app_type = self.parse_app_type(app)?;
 
-        if provider.is_none() {
+        // Use CC Switch's ProviderService::switch - automatically syncs config files!
+        let result = ProviderService::switch(&self.state, app_type, provider_id)
+            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
+
+        tracing::info!(
+            "✅ Switched to provider {} for {} using CC Switch core",
+            provider_id,
+            app
+        );
+        if !result.warnings.is_empty() {
+            tracing::warn!("⚠️ Warnings: {:?}", result.warnings);
+        }
+
+        Ok(serde_json::to_string_pretty(&json!({
+            "success": true,
+            "message": format!("Switched to provider {} for {}", provider_id, app),
+            "config_synced": true,
+            "source": "cc-switch-core-library",
+            "warnings": result.warnings
+        }))?)
+    }
+
+    fn tool_get_current_provider(&self, args: Value) -> crate::Result<String> {
+        let app = args
+            .get("app")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| crate::Error::McpProtocol("Missing app parameter".into()))?;
+
+        let app_type = self.parse_app_type(app)?;
+
+        // Use CC Switch's ProviderService
+        let current = ProviderService::current(&self.state, app_type.clone())
+            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
+
+        if current.is_empty() {
             return Ok(serde_json::to_string_pretty(&json!({
-                "current": serde_json::Value::Null,
-                "message": "No provider currently active"
+                "current": Value::Null,
+                "message": "No provider currently active",
+                "source": "cc-switch-core-library"
             }))?);
         }
 
+        let providers = ProviderService::list(&self.state, app_type)
+            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
+
+        let provider = providers
+            .get(&current)
+            .ok_or_else(|| crate::Error::ProviderNotFound(current.clone()))?;
+
         Ok(serde_json::to_string_pretty(&json!({
-            "current": provider
+            "current": provider,
+            "source": "cc-switch-core-library"
         }))?)
     }
 
-    fn tool_list_universal_providers(&self, _args: Value) -> Result<String> {
-        let manager = self.service.get_db().get_universal_provider_manager()?;
-        let providers = manager.list_providers();
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "providers": providers
-        }))?)
-    }
-
-    fn tool_add_universal_provider(&self, args: Value) -> Result<String> {
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
-        let provider_type = args
-            .get("providerType")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing providerType parameter".into()))?;
-        let api_key = args
-            .get("apiKey")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing apiKey parameter".into()))?;
-        let base_url = args
-            .get("baseUrl")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing baseUrl parameter".into()))?;
-        let apps = args
-            .get("apps")
-            .ok_or_else(|| Error::McpProtocol("Missing apps parameter".into()))?;
-
-        let id = format!("universal-{}", uuid::Uuid::new_v4());
-
-        let apps_config: crate::provider::UniversalProviderApps =
-            serde_json::from_value(apps.clone())
-                .map_err(|e| Error::InvalidConfig(format!("Invalid apps config: {}", e)))?;
-
-        let provider = UniversalProvider::new(
-            id.clone(),
-            name.to_string(),
-            provider_type.to_string(),
-            base_url.to_string(),
-            api_key.to_string(),
-        );
-
-        self.service.get_db().save_universal_provider(&provider)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": true,
-            "providerId": id,
-            "apps": apps_config,
-            "message": "Universal provider added. Use switch_provider to activate it for specific apps."
-        }))?)
-    }
-
-    fn tool_delete_universal_provider(&self, args: Value) -> Result<String> {
-        let provider_id = args
-            .get("providerId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing providerId parameter".into()))?;
-
-        let success = self
-            .service
-            .get_db()
-            .delete_universal_provider(provider_id)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": success,
-            "message": if success { "Universal provider deleted" } else { "Provider not found" }
-        }))?)
-    }
-
-    fn tool_get_db_path(&self, _args: Value) -> Result<String> {
-        Ok(serde_json::to_string_pretty(&json!({
-            "dbPath": self.service.get_db().get_db_path().to_string_lossy()
-        }))?)
-    }
-
-    fn tool_list_mcp_servers(&self, _args: Value) -> Result<String> {
-        let servers = self.service.get_db().get_mcp_servers()?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "servers": servers
-        }))?)
-    }
-
-    fn tool_add_mcp_server(&self, args: Value) -> Result<String> {
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
-        let server_config = args
-            .get("serverConfig")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing serverConfig parameter".into()))?;
-        let description = args.get("description").and_then(|v| v.as_str());
-        let enabled_apps = args
-            .get("enabledApps")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        let id = format!("mcp-{}", uuid::Uuid::new_v4());
-
-        let server = crate::database::McpServerConfig {
-            id: id.clone(),
-            name: name.to_string(),
-            server_config: server_config.to_string(),
-            description: description.map(|s| s.to_string()),
-            homepage: None,
-            docs: None,
-            tags: "[]".to_string(),
-            enabled_claude: enabled_apps.contains(&"claude".to_string()),
-            enabled_codex: enabled_apps.contains(&"codex".to_string()),
-            enabled_gemini: enabled_apps.contains(&"gemini".to_string()),
-            enabled_opencode: enabled_apps.contains(&"opencode".to_string()),
-        };
-
-        self.service.get_db().save_mcp_server(&server)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": true,
-            "serverId": id,
-            "message": "MCP server added successfully"
-        }))?)
-    }
-
-    fn tool_delete_mcp_server(&self, args: Value) -> Result<String> {
-        let server_id = args
-            .get("serverId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing serverId parameter".into()))?;
-
-        let success = self.service.get_db().delete_mcp_server(server_id)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": success,
-            "message": if success { "MCP server deleted" } else { "Server not found" }
-        }))?)
-    }
-
-    fn tool_list_skills(&self, _args: Value) -> Result<String> {
-        let skills = self.service.get_db().get_skills()?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "skills": skills
-        }))?)
-    }
-
-    fn tool_add_skill(&self, args: Value) -> Result<String> {
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
-        let directory = args
-            .get("directory")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing directory parameter".into()))?;
-        let repo_owner = args.get("repoOwner").and_then(|v| v.as_str());
-        let repo_name = args.get("repoName").and_then(|v| v.as_str());
-        let repo_branch = args
-            .get("repoBranch")
-            .and_then(|v| v.as_str())
-            .unwrap_or("main");
-        let description = args.get("description").and_then(|v| v.as_str());
-        let enabled_apps = args
-            .get("enabledApps")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        let id = format!("skill-{}", uuid::Uuid::new_v4());
-
-        let skill = SkillConfig {
-            id: id.clone(),
-            name: name.to_string(),
-            description: description.map(|s| s.to_string()),
-            directory: directory.to_string(),
-            repo_owner: repo_owner.map(|s| s.to_string()),
-            repo_name: repo_name.map(|s| s.to_string()),
-            repo_branch: repo_branch.to_string(),
-            readme_url: None,
-            enabled_claude: enabled_apps.contains(&"claude".to_string()),
-            enabled_codex: enabled_apps.contains(&"codex".to_string()),
-            enabled_gemini: enabled_apps.contains(&"gemini".to_string()),
-            enabled_opencode: enabled_apps.contains(&"opencode".to_string()),
-            installed_at: chrono::Utc::now().timestamp(),
-        };
-
-        self.service.get_db().save_skill(&skill)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": true,
-            "skillId": id,
-            "message": "Skill added successfully"
-        }))?)
-    }
-
-    fn tool_delete_skill(&self, args: Value) -> Result<String> {
-        let skill_id = args
-            .get("skillId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing skillId parameter".into()))?;
-
-        let success = self.service.get_db().delete_skill(skill_id)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": success,
-            "message": if success { "Skill deleted" } else { "Skill not found" }
-        }))?)
-    }
-
-    fn tool_list_prompts(&self, args: Value) -> Result<String> {
-        let app = args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-
-        let prompts = self.service.get_db().get_prompts(app)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "prompts": prompts
-        }))?)
-    }
-
-    fn tool_add_prompt(&self, args: Value) -> Result<String> {
-        let app = args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-        let name = args
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing name parameter".into()))?;
-        let content = args
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing content parameter".into()))?;
-        let description = args.get("description").and_then(|v| v.as_str());
-
-        let id = format!("prompt-{}", uuid::Uuid::new_v4());
-        let now = chrono::Utc::now().timestamp();
-
-        let prompt = PromptConfig {
-            id: id.clone(),
-            app_type: app.to_string(),
-            name: name.to_string(),
-            content: content.to_string(),
-            description: description.map(|s| s.to_string()),
-            enabled: true,
-            created_at: now,
-            updated_at: now,
-        };
-
-        self.service.get_db().save_prompt(&prompt)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": true,
-            "promptId": id,
-            "message": "Prompt added successfully"
-        }))?)
-    }
-
-    fn tool_delete_prompt(&self, args: Value) -> Result<String> {
-        let app = args
-            .get("app")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing app parameter".into()))?;
-        let prompt_id = args
-            .get("promptId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing promptId parameter".into()))?;
-
-        let success = self.service.get_db().delete_prompt(prompt_id, app)?;
-
-        Ok(serde_json::to_string_pretty(&json!({
-            "success": success,
-            "message": if success { "Prompt deleted" } else { "Prompt not found" }
-        }))?)
-    }
-
-    fn handle_resources_list(&self) -> Result<Value> {
+    fn handle_resources_list(&self) -> crate::Result<Value> {
         Ok(json!({
             "resources": [
                 {
                     "uri": "ccswitch://providers/claude",
-                    "name": "Claude Providers",
-                    "description": "List of Claude Code providers",
+                    "name": "Claude Providers (CC Switch Core)",
+                    "description": "Provider list from CC Switch's ProviderService",
                     "mimeType": "application/json"
-                },
-                {
-                    "uri": "ccswitch://providers/codex",
-                    "name": "Codex Providers",
-                    "description": "List of Codex providers",
-                    "mimeType": "application/json"
-                },
-                {
-                    "uri": "ccswitch://providers/gemini",
-                    "name": "Gemini Providers",
-                    "description": "List of Gemini CLI providers",
-                    "mimeType": "application/json"
-                },
-                {
-                    "uri": "ccswitch://providers/opencode",
-                    "name": "OpenCode Providers",
-                    "description": "List of OpenCode providers",
-                    "mimeType": "application/json"
-                },
-                {
-                    "uri": "ccswitch://providers/openclaw",
-                    "name": "OpenClaw Providers",
-                    "description": "List of OpenClaw providers",
-                    "mimeType": "application/json"
-                },
-                {
-                    "uri": "ccswitch://universal-providers",
-                    "name": "Universal Providers",
-                    "description": "List of cross-app universal providers",
-                    "mimeType": "application/json"
-                },
-                {
-                    "uri": "ccswitch://config/path",
-                    "name": "Config Path",
-                    "description": "CC Switch configuration path",
-                    "mimeType": "text/plain"
                 }
             ]
-        }))
-    }
-
-    fn handle_resources_read(&self, params: Option<Value>) -> Result<Value> {
-        let params = params.ok_or_else(|| Error::McpProtocol("Missing params".into()))?;
-        let uri = params
-            .get("uri")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::McpProtocol("Missing uri parameter".into()))?;
-
-        let content = if uri.starts_with("ccswitch://providers/") {
-            let app = uri.replace("ccswitch://providers/", "");
-            let manager = self.service.list_providers(&app)?;
-            serde_json::to_string_pretty(&json!({
-                "providers": manager.list_providers(),
-                "current": manager.current
-            }))?
-        } else if uri == "ccswitch://universal-providers" {
-            let manager = self.service.get_db().get_universal_provider_manager()?;
-            serde_json::to_string_pretty(&json!({
-                "providers": manager.list_providers()
-            }))?
-        } else if uri == "ccswitch://config/path" {
-            self.service
-                .get_db()
-                .get_db_path()
-                .to_string_lossy()
-                .to_string()
-        } else {
-            return Err(Error::McpProtocol(format!("Unknown resource: {}", uri)));
-        };
-
-        Ok(json!({
-            "contents": [
-                {
-                    "uri": uri,
-                    "mimeType": if uri.ends_with("/path") { "text/plain" } else { "application/json" },
-                    "text": content
-                }
-            ]
-        }))
-    }
-
-    fn handle_prompts_list(&self) -> Result<Value> {
-        Ok(json!({
-            "prompts": []
         }))
     }
 }

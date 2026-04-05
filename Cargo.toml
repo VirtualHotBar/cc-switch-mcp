@@ -1,6 +1,6 @@
 [package]
 name = "cc-switch-mcp"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.85.0"
 description = "MCP Server for CC Switch - Provider management for Claude Code, Codex, Gemini CLI, OpenCode & OpenClaw"
@@ -8,6 +8,9 @@ authors = ["CC Switch Team"]
 license = "MIT"
 
 [dependencies]
+# CC Switch core library
+cc-switch = { path = "cc-switch/src-tauri" }
+
 # Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "sync", "process"] }
 
@@ -22,18 +25,6 @@ thiserror = "2.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Database (same as CC Switch)
-rusqlite = { version = "0.31", features = ["bundled"] }
-
-# Utilities
-dirs = "5.0"
-indexmap = { version = "2", features = ["serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.11", features = ["v4"] }
-
-# CC Switch core services (will be extracted as a crate)
-# For now, we'll copy the essential parts
 
 [dev-dependencies]
 tempfile = "3"
