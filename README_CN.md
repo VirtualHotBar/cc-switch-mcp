@@ -1,6 +1,6 @@
 # CC Switch MCP Server
 
-[![npm version](https://badge.fury.io/js/@imvhb%2Fmcp-server.svg)](https://badge.fury.io/js/@imvhb/mcp-server)
+[![npm version](https://badge.fury.io/js/@imvhb%2Fcc-switch-mcp-server.svg)](https://badge.fury.io/js/@imvhb/cc-switch-mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-VirtualHotBar%2Fcc--switch--mcp-blue)](https://github.com/VirtualHotBar/cc-switch-mcp)
 
@@ -23,14 +23,14 @@
 ### 从 NPM 安装（推荐）
 
 ```bash
-npm install -g @imvhb/mcp-server
+npm install -g @imvhb/cc-switch-mcp-server
 ```
 
 或使用其他包管理器：
 
 ```bash
-yarn global add @imvhb/mcp-server
-pnpm add -g @imvhb/mcp-server
+yarn global add @imvhb/cc-switch-mcp-server
+pnpm add -g @imvhb/cc-switch-mcp-server
 ```
 
 ### 从源码构建
@@ -247,5 +247,5 @@ MIT
 ## 相关链接
 
 - **GitHub**: https://github.com/VirtualHotBar/cc-switch-mcp
-- **NPM**: https://www.npmjs.com/package/@imvhb/mcp-server
+- **NPM**: https://www.npmjs.com/package/@imvhb/cc-switch-mcp-server
 - **CC Switch**: https://github.com/farion1231/cc-switch

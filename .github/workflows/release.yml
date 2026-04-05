@@ -64,7 +64,7 @@ jobs:
         run: |
           cat > packages/${{ matrix.name }}/package.json << EOF
           {
-            "name": "@imvhb/mcp-server-${{ matrix.name }}",
+            "name": "@imvhb/cc-switch-mcp-server-${{ matrix.name }}",
             "version": "${{ steps.get_version.outputs.VERSION }}",
             "description": "CC Switch MCP Server binary for ${{ matrix.name }}",
             "license": "MIT",
@@ -85,7 +85,7 @@ jobs:
       - name: Create README
         run: |
           cat > packages/${{ matrix.name }}/README.md << EOF
-          # @imvhb/mcp-server-${{ matrix.name }}
+          # @imvhb/cc-switch-mcp-server-${{ matrix.name }}
           
           Binary package for CC Switch MCP Server (${{ matrix.name }}).
           
@@ -196,7 +196,7 @@ jobs:
             ## Installation
             
             ```bash
-            npm install -g @imvhb/mcp-server
+            npm install -g @imvhb/cc-switch-mcp-server
             ```
             
             npm will automatically install the correct binary for your platform!

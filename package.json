@@ -1,5 +1,5 @@
 {
-  "name": "@imvhb/mcp-server",
+  "name": "@imvhb/cc-switch-mcp-server",
   "version": "0.1.1",
   "description": "MCP Server for CC Switch - Provider management for Claude Code, Codex, Gemini CLI, OpenCode & OpenClaw",
   "bin": {
@@ -47,9 +47,9 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "@imvhb/mcp-server-win32-x64": "0.1.1",
-    "@imvhb/mcp-server-darwin-x64": "0.1.1",
-    "@imvhb/mcp-server-darwin-arm64": "0.1.1",
-    "@imvhb/mcp-server-linux-x64": "0.1.1"
+    "@imvhb/cc-switch-mcp-server-win32-x64": "0.1.1",
+    "@imvhb/cc-switch-mcp-server-darwin-x64": "0.1.1",
+    "@imvhb/cc-switch-mcp-server-darwin-arm64": "0.1.1",
+    "@imvhb/cc-switch-mcp-server-linux-x64": "0.1.1"
   }
 }

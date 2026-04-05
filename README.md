@@ -1,6 +1,6 @@
 # CC Switch MCP Server
 
-[![npm version](https://badge.fury.io/js/@imvhb%2Fmcp-server.svg)](https://badge.fury.io/js/@imvhb/mcp-server)
+[![npm version](https://badge.fury.io/js/@imvhb%2Fcc-switch-mcp-server.svg)](https://badge.fury.io/js/@imvhb/cc-switch-mcp-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/GitHub-VirtualHotBar%2Fcc--switch--mcp-blue)](https://github.com/VirtualHotBar/cc-switch-mcp)
 
@@ -13,14 +13,14 @@ MCP Server implementation for [CC Switch](https://github.com/farion1231/cc-switc
 ### From NPM
 
 ```bash
-npm install -g @imvhb/mcp-server
+npm install -g @imvhb/cc-switch-mcp-server
 ```
 
 Or with your favorite package manager:
 
 ```bash
-yarn global add @imvhb/mcp-server
-pnpm add -g @imvhb/mcp-server
+yarn global add @imvhb/cc-switch-mcp-server
+pnpm add -g @imvhb/cc-switch-mcp-server
 ```
 
 ### From Source
