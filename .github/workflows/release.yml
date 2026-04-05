@@ -137,7 +137,7 @@ jobs:
           path: package
 
       - name: Publish to NPM
-        run: npm publish --provenance --access public
+        run: npm publish --access public
         working-directory: package
 
   publish-main:
@@ -175,7 +175,7 @@ jobs:
           "
 
       - name: Publish to NPM
-        run: npm publish --provenance --access public
+        run: npm publish --access public
 
   release:
     name: Create GitHub Release
