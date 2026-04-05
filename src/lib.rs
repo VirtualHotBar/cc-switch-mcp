@@ -1,3 +1,6 @@
+mod core;
+mod database;
+mod config_sync;
 mod error;
 mod mcp_server;
 

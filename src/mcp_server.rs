@@ -1,4 +1,7 @@
-use cc_switch_lib::{AppState, AppType, Database, ProviderService};
+use crate::config_sync;
+use crate::core::{AppType, Provider};
+use crate::database::Database;
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
@@ -38,51 +41,17 @@ struct JsonRpcError {
 }
 
 pub struct McpServer {
-    state: Arc<AppState>,
+    db: Arc<Database>,
 }
 
 impl McpServer {
-    pub fn new() -> crate::Result<Self> {
-        let db = Database::init()
-            .map_err(|e| crate::Error::Database(e.to_string()))?;
-        let state = Arc::new(AppState::new(Arc::new(db)));
-        Ok(Self { state })
+    pub fn new() -> Result<Self> {
+        let db = Database::open()?;
+        Ok(Self { db: Arc::new(db) })
     }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct JsonRpcResponse {
-    jsonrpc: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<JsonRpcError>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct JsonRpcError {
-    code: i32,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<Value>,
-}
-
-pub struct McpServer {
-    state: Arc<AppState>,
-}
-
-impl McpServer {
-    pub fn new() -> crate::Result<Self> {
-        let db = Database::init()
-            .map_err(|e: cc_switch_lib::error::AppError| crate::Error::Database(e.to_string()))?;
-        let state = Arc::new(AppState::new(Arc::new(db)));
-        Ok(Self { state })
-    }
-
-    pub fn run(&self) -> crate::Result<()> {
-        tracing::info!("🚀 MCP Server running with CC Switch core library");
-        tracing::info!("📍 Using CC Switch's ProviderService for all operations");
+    pub fn run(&self) -> Result<()> {
+        tracing::info!("Starting CC Switch MCP Server (standalone mode)");
 
         let stdin = io::stdin();
         let stdout = io::stdout();
@@ -94,7 +63,7 @@ impl McpServer {
                 continue;
             }
 
-            tracing::debug!("📥 Received: {}", line);
+            tracing::debug!("Received: {}", line);
 
             let request: JsonRpcRequest = match serde_json::from_str(&line) {
                 Ok(r) => r,
@@ -110,7 +79,6 @@ impl McpServer {
                         }),
                     };
                     let response_str = serde_json::to_string(&error_response)?;
-                    tracing::debug!("📤 Sending: {}", response_str);
                     stdout.write_all(response_str.as_bytes())?;
                     stdout.write_all(b"\n")?;
                     stdout.flush()?;
@@ -121,7 +89,6 @@ impl McpServer {
             let response = self.handle_request(request)?;
 
             let response_str = serde_json::to_string(&response)?;
-            tracing::debug!("📤 Sending: {}", response_str);
             stdout.write_all(response_str.as_bytes())?;
             stdout.write_all(b"\n")?;
             stdout.flush()?;
@@ -130,7 +97,7 @@ impl McpServer {
         Ok(())
     }
 
-    fn handle_request(&self, request: JsonRpcRequest) -> crate::Result<JsonRpcResponse> {
+    fn handle_request(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
         let result = match request.method.as_str() {
             "initialize" => self.handle_initialize(request.params)?,
             "initialized" => Value::Null,
@@ -160,9 +127,9 @@ impl McpServer {
         })
     }
 
-    fn handle_initialize(&self, params: Option<Value>) -> crate::Result<Value> {
+    fn handle_initialize(&self, params: Option<Value>) -> Result<Value> {
         let client_info = params.and_then(|p| p.get("clientInfo").cloned());
-        tracing::info!("✅ Client connected: {:?}", client_info);
+        tracing::info!("Client connected: {:?}", client_info);
 
         Ok(json!({
             "protocolVersion": MCP_VERSION,
@@ -177,18 +144,18 @@ impl McpServer {
         }))
     }
 
-    fn handle_tools_list(&self) -> crate::Result<Value> {
+    fn handle_tools_list(&self) -> Result<Value> {
         Ok(json!({
             "tools": [
                 {
                     "name": "list_providers",
-                    "description": "List all providers for a CLI tool (uses CC Switch core)",
+                    "description": "List all providers for a CLI tool (reads from CC Switch database)",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "app": {
                                 "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode"],
+                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"],
                                 "description": "The CLI tool"
                             }
                         },
@@ -197,13 +164,13 @@ impl McpServer {
                 },
                 {
                     "name": "switch_provider",
-                    "description": "Switch to a specific provider (uses CC Switch core - auto syncs config)",
+                    "description": "Switch to a specific provider (updates database and syncs config files)",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "app": {
                                 "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode"]
+                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"]
                             },
                             "providerId": {
                                 "type": "string",
@@ -215,13 +182,13 @@ impl McpServer {
                 },
                 {
                     "name": "get_current_provider",
-                    "description": "Get currently active provider (uses CC Switch core)",
+                    "description": "Get currently active provider",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "app": {
                                 "type": "string",
-                                "enum": ["claude", "codex", "gemini", "opencode"]
+                                "enum": ["claude", "codex", "gemini", "opencode", "openclaw"]
                             }
                         },
                         "required": ["app"]
@@ -231,7 +198,7 @@ impl McpServer {
         }))
     }
 
-    fn handle_tools_call(&self, params: Option<Value>) -> crate::Result<Value> {
+    fn handle_tools_call(&self, params: Option<Value>) -> Result<Value> {
         let params = params.ok_or_else(|| crate::Error::McpProtocol("Missing params".into()))?;
         let tool_name = params
             .get("name")
@@ -261,40 +228,42 @@ impl McpServer {
         }))
     }
 
-    fn parse_app_type(&self, app: &str) -> crate::Result<AppType> {
-        match app {
-            "claude" => Ok(AppType::Claude),
-            "codex" => Ok(AppType::Codex),
-            "gemini" => Ok(AppType::Gemini),
-            "opencode" => Ok(AppType::OpenCode),
-            _ => Err(crate::Error::InvalidApp(app.to_string())),
-        }
+    fn parse_app_type(&self, app: &str) -> Result<AppType> {
+        AppType::from_str(app).ok_or_else(|| crate::Error::InvalidApp(app.to_string()))
     }
 
-    fn tool_list_providers(&self, args: Value) -> crate::Result<String> {
+    fn tool_list_providers(&self, args: Value) -> Result<String> {
         let app = args
             .get("app")
             .and_then(|v| v.as_str())
             .ok_or_else(|| crate::Error::McpProtocol("Missing app parameter".into()))?;
 
         let app_type = self.parse_app_type(app)?;
+        let providers = self.db.get_providers(app_type)?;
+        let current_id = self.db.get_current_provider(app_type)?;
 
-        // Use CC Switch's ProviderService
-        let providers = ProviderService::list(&self.state, app_type.clone())
-            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
-
-        let current = ProviderService::current(&self.state, app_type)
-            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
+        let providers_json: Vec<Value> = providers
+            .iter()
+            .map(|p| {
+                json!({
+                    "id": p.id,
+                    "name": p.name,
+                    "isCurrent": p.is_current,
+                    "category": p.category,
+                    "websiteUrl": p.website_url
+                })
+            })
+            .collect();
 
         Ok(serde_json::to_string_pretty(&json!({
-            "providers": providers,
-            "current": current,
-            "source": "cc-switch-core-library-v3.12.3",
-            "note": "Using CC Switch's ProviderService for identical behavior"
+            "providers": providers_json,
+            "currentProviderId": current_id,
+            "source": "cc-switch-db-standalone",
+            "note": "Reading directly from CC Switch database"
         }))?)
     }
 
-    fn tool_switch_provider(&self, args: Value) -> crate::Result<String> {
+    fn tool_switch_provider(&self, args: Value) -> Result<String> {
         let app = args
             .get("app")
             .and_then(|v| v.as_str())
@@ -306,68 +275,66 @@ impl McpServer {
 
         let app_type = self.parse_app_type(app)?;
 
-        // Use CC Switch's ProviderService::switch - automatically syncs config files!
-        let result = ProviderService::switch(&self.state, app_type, provider_id)
-            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
+        let provider = self
+            .db
+            .get_provider(app_type, provider_id)?
+            .ok_or_else(|| crate::Error::ProviderNotFound(provider_id.to_string()))?;
 
-        tracing::info!(
-            "✅ Switched to provider {} for {} using CC Switch core",
-            provider_id,
-            app
-        );
-        if !result.warnings.is_empty() {
-            tracing::warn!("⚠️ Warnings: {:?}", result.warnings);
-        }
+        self.db.set_current_provider(app_type, provider_id)?;
+        config_sync::sync_provider_to_config(app_type, &provider)?;
+
+        tracing::info!("Switched to provider {} for {}", provider_id, app);
 
         Ok(serde_json::to_string_pretty(&json!({
             "success": true,
             "message": format!("Switched to provider {} for {}", provider_id, app),
             "config_synced": true,
-            "source": "cc-switch-core-library",
-            "warnings": result.warnings
+            "source": "cc-switch-mcp-standalone",
+            "warnings": []
         }))?)
     }
 
-    fn tool_get_current_provider(&self, args: Value) -> crate::Result<String> {
+    fn tool_get_current_provider(&self, args: Value) -> Result<String> {
         let app = args
             .get("app")
             .and_then(|v| v.as_str())
             .ok_or_else(|| crate::Error::McpProtocol("Missing app parameter".into()))?;
 
         let app_type = self.parse_app_type(app)?;
+        let current_id = self.db.get_current_provider(app_type)?;
 
-        // Use CC Switch's ProviderService
-        let current = ProviderService::current(&self.state, app_type.clone())
-            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
-
-        if current.is_empty() {
+        if current_id.is_none() {
             return Ok(serde_json::to_string_pretty(&json!({
                 "current": Value::Null,
                 "message": "No provider currently active",
-                "source": "cc-switch-core-library"
+                "source": "cc-switch-mcp-standalone"
             }))?);
         }
 
-        let providers = ProviderService::list(&self.state, app_type)
-            .map_err(|e| crate::Error::ProviderNotFound(e.to_string()))?;
-
-        let provider = providers
-            .get(&current)
-            .ok_or_else(|| crate::Error::ProviderNotFound(current.clone()))?;
+        let provider = self
+            .db
+            .get_provider(app_type, current_id.as_ref().unwrap())?
+            .ok_or_else(|| crate::Error::ProviderNotFound(current_id.unwrap()))?;
 
         Ok(serde_json::to_string_pretty(&json!({
-            "current": provider,
-            "source": "cc-switch-core-library"
+            "current": {
+                "id": provider.id,
+                "name": provider.name,
+                "isCurrent": provider.is_current,
+                "category": provider.category,
+                "websiteUrl": provider.website_url
+            },
+            "source": "cc-switch-mcp-standalone"
         }))?)
     }
 
-    fn handle_resources_list(&self) -> crate::Result<Value> {
+    fn handle_resources_list(&self) -> Result<Value> {
         Ok(json!({
             "resources": [
                 {
                     "uri": "ccswitch://providers/claude",
-                    "name": "Claude Providers (CC Switch Core)",
-                    "description": "Provider list from CC Switch's ProviderService",
+                    "name": "Claude Providers",
+                    "description": "Provider list from CC Switch database",
                     "mimeType": "application/json"
                 }
             ]
