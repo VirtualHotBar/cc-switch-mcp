@@ -182,21 +182,43 @@ jobs:
     needs: [build, publish-platform, publish-main]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: false
-
-      - name: Prepare release files
-        run: |
-          mkdir -p release
-          find artifacts -name "cc-switch-mcp*" -type f -exec cp {} release/ \;
-          ls -lh release/
-
       - name: Get version
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download Windows x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-win32-x64
+          path: artifacts/win32-x64
+
+      - name: Download macOS x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-darwin-x64
+          path: artifacts/darwin-x64
+
+      - name: Download macOS ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-darwin-arm64
+          path: artifacts/darwin-arm64
+
+      - name: Download Linux x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: package-linux-x64
+          path: artifacts/linux-x64
+
+      - name: Prepare release files
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          mkdir -p release
+          cp artifacts/win32-x64/binary/cc-switch-mcp.exe release/cc-switch-mcp-v${VERSION}-win32-x64.exe
+          cp artifacts/darwin-x64/binary/cc-switch-mcp release/cc-switch-mcp-v${VERSION}-darwin-x64
+          cp artifacts/darwin-arm64/binary/cc-switch-mcp release/cc-switch-mcp-v${VERSION}-darwin-arm64
+          cp artifacts/linux-x64/binary/cc-switch-mcp release/cc-switch-mcp-v${VERSION}-linux-x64
+          ls -lh release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
