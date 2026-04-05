@@ -133,15 +133,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '25'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Upgrade npm to latest
-        run: |
-          npm --version
-          npm install -g npm@10.9.2
-          npm --version
-        shell: bash
 
       - name: Publish to NPM
         run: npm publish --access public --provenance
@@ -160,7 +153,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '25'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Get version
@@ -180,13 +173,6 @@ jobs:
           });
           require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2));
           "
-
-      - name: Upgrade npm to latest
-        run: |
-          npm --version
-          npm install -g npm@10.9.2
-          npm --version
-        shell: bash
 
       - name: Publish to NPM
         run: npm publish --access public --provenance
