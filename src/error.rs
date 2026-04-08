@@ -19,6 +19,15 @@ pub enum Error {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Invalid URL format: {0}")]
+    InvalidUrl(String),
+
+    #[error("Invalid API key format: {0}")]
+    InvalidApiKey(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

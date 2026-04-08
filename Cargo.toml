@@ -29,6 +29,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Utils
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
+toml_edit = "0.22"
+futures = "0.3"
+url = "2.5"
 
 [dev-dependencies]
 tempfile = "3"
